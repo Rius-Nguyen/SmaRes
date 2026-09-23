@@ -88,7 +88,7 @@ export default function BookingDiagramPage() {
             </div>
             <div>
               <label className="block text-gray-500 mb-1">Họ tên & Số điện thoại</label>
-              <div className="font-semibold text-gray-900">Nguyễn Văn A - 090 123 4567</div>
+              <div className="font-semibold text-gray-900">Nguyễn Văn A - 0XX XXX XXXX</div>
             </div>
           </div>
 
