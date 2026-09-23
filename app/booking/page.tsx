@@ -27,7 +27,7 @@ export default function BookingPage() {
             </div>
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">Số điện thoại *</label>
-              <input type="tel" placeholder="090 1234 567" className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-700 outline-none transition-all" />
+              <input type="tel" placeholder="0XX XXX XXXX" className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-700 outline-none transition-all" />
             </div>
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">Địa chỉ Email</label>

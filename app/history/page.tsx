@@ -47,7 +47,7 @@ export default function HistoryPage() {
             </thead>
             <tbody className="text-sm text-gray-600">
               
-              {/* Dòng 1: Đơn hàng có thể tương tác */}
+              {/* Dòng 1: Nhấn Huỷ đơn Xác nhận huỷ đơn hàng */}
               <tr className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                 <td className="py-4 pl-4 font-semibold text-gray-900">SR-2024-0847</td>
                 <td className="py-4">25/10/2024</td>
@@ -77,7 +77,7 @@ export default function HistoryPage() {
                 </td>
               </tr>
 
-              {/* Dòng 2: Mẫu tĩnh */}
+              {/* Dòng 2: Đã hoàn thành */}
               <tr className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                 <td className="py-4 pl-4 font-semibold text-gray-900">SR-2024-0711</td>
                 <td className="py-4">12/09/2024</td>
@@ -86,6 +86,18 @@ export default function HistoryPage() {
                 <td className="py-4">2 người</td>
                 <td className="py-4">
                   <span className="px-3 py-1 text-xs font-bold text-gray-600 bg-gray-100 rounded-full border border-gray-200">Đã hoàn thành</span>
+                </td>
+                <td className="py-4 text-center text-gray-400">—</td>
+              </tr>
+            {/* Dòng 3: Đã hủy */}
+              <tr className="hover:bg-gray-50 transition-colors">
+                <td className="py-4 pl-4 font-semibold text-gray-900">SR-2024-0519</td>
+                <td className="py-4">01/08/2024</td>
+                <td className="py-4">18:30</td>
+                <td className="py-4">Bàn W01</td>
+                <td className="py-4">6 người</td>
+                <td className="py-4">
+                  <span className="px-3 py-1 text-xs font-bold text-red-600 bg-red-100 rounded-full">Đã hủy</span>
                 </td>
                 <td className="py-4 text-center text-gray-400">—</td>
               </tr>
