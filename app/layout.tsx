@@ -26,9 +26,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} min-h-full flex flex-col antialiased`}
-      >
+      <body className={`${geistSans.variable} ${geistMono.variable} min-h-full flex flex-col antialiased bg-white text-gray-900`}>
         <Navbar />
         {children}
         <Footer />
