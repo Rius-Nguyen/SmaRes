@@ -2,24 +2,25 @@
 
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function Navbar() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userName, setUserName] = useState('');
+  const router = useRouter();
 
   // Tự động kiểm tra trạng thái đăng nhập khi load trang
   useEffect(() => {
     const checkSession = () => {
-      // Lấy danh sách cookie trên trình duyệt
-      const cookies = document.cookie.split(';');
-      
-      // Quét tìm xem có cookie nào mang tên 'token' không
-      const hasToken = cookies.some(c => c.trim().startsWith('token='));
+      // Đọc token và user từ localStorage (đồng bộ với file Login)
+      const token = localStorage.getItem('token');
+      const storedUser = localStorage.getItem('user');
 
-      if (hasToken) {
+      if (token && storedUser) {
         setIsLoggedIn(true);
-        // Tạm gán tên mặc định. Ở Sprint 2, giá trị này sẽ được lấy từ Backend
-        setUserName('Khách hàng'); 
+        // Ép kiểu chuỗi JSON về lại Object và lấy đúng tên người dùng
+        const userData = JSON.parse(storedUser);
+        setUserName(userData.name); 
       } else {
         setIsLoggedIn(false);
       }
@@ -30,9 +31,12 @@ export default function Navbar() {
 
   // Xử lý sự kiện Đăng xuất
   const handleLogout = () => {
-    // Xóa cookie token
-    document.cookie = "token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    // Xóa dữ liệu trong localStorage
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     setIsLoggedIn(false);
+    setUserName('');
+    router.push('/login'); // Tự động đẩy về trang đăng nhập
   };
 
   return (
@@ -40,7 +44,6 @@ export default function Navbar() {
       {/* Cụm Logo bên trái */}
       <div className="flex items-center space-x-2 shrink-0">
         <div className="w-8 h-8 rounded-full bg-green-700 flex items-center justify-center text-white font-bold">
-          {/* Thay bằng icon lá cây nếu bạn có SVG */}
           S
         </div>
         <Link href="/" className="text-2xl font-bold text-green-800 tracking-tight whitespace-nowrap">SmaRes</Link>
