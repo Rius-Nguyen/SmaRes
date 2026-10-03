@@ -22,7 +22,7 @@ mongoose.connect(mongoURI)
         console.error('❌ Lỗi kết nối MongoDB:', err.message);
     });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`🚀 Server đang chạy tại http://localhost:${PORT}`);
 });

@@ -12,7 +12,7 @@ app.use(cookieParser()); // Công cụ bắt buộc để đọc được Cookie
 
 // Cấu hình CORS để Frontend gọi được API
 app.use(cors({
-  origin: 'http://127.0.0.1:5500', // Đổi URL này thành URL chạy Frontend của bạn (VD: localhost:3000)
+  origin: 'http://127.0.0.1:5000', // Đổi URL này thành URL chạy Frontend của bạn (VD: localhost:3000)
   credentials: true // Bắt buộc phải là true để trình duyệt gửi Cookie Token đi
 }));
 
