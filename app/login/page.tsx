@@ -45,6 +45,9 @@ export default function LoginPage() {
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
         
+        // Bắn sự kiện để Navbar cập nhật ngay lập tức mà không cần F5
+        window.dispatchEvent(new Event('auth-change'));
+
         alert("Đăng nhập thành công!");
         router.push('/'); // Chuyển hướng về trang chủ SmaRes
       } else {
