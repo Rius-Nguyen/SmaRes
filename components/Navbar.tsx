@@ -9,33 +9,55 @@ export default function Navbar() {
   const [userName, setUserName] = useState('');
   const router = useRouter();
 
-  // Tự động kiểm tra trạng thái đăng nhập khi load trang
+  // Tự động kiểm tra trạng thái đăng nhập khi load trang hoặc khi có sự kiện đăng nhập/đăng xuất
   useEffect(() => {
     const checkSession = () => {
-      // Đọc token và user từ localStorage (đồng bộ với file Login)
-      const token = localStorage.getItem('token');
-      const storedUser = localStorage.getItem('user');
+      try {
+        const token = localStorage.getItem('token');
+        const storedUser = localStorage.getItem('user');
 
-      if (token && storedUser) {
-        setIsLoggedIn(true);
-        // Ép kiểu chuỗi JSON về lại Object và lấy đúng tên người dùng
-        const userData = JSON.parse(storedUser);
-        setUserName(userData.name); 
-      } else {
+        if (token && storedUser) {
+          const userData = JSON.parse(storedUser);
+          setUserName(userData.name || 'Người dùng');
+          setIsLoggedIn(true);
+        } else {
+          setIsLoggedIn(false);
+          setUserName('');
+        }
+      } catch {
         setIsLoggedIn(false);
+        setUserName('');
       }
     };
 
     checkSession();
+
+    // Lắng nghe sự kiện để đồng bộ tức thì giữa các component
+    window.addEventListener('storage', checkSession);
+    window.addEventListener('auth-change', checkSession);
+
+    return () => {
+      window.removeEventListener('storage', checkSession);
+      window.removeEventListener('auth-change', checkSession);
+    };
   }, []);
 
   // Xử lý sự kiện Đăng xuất
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (err) {
+      console.error('Lỗi khi gọi API logout:', err);
+    }
+
     // Xóa dữ liệu trong localStorage
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setIsLoggedIn(false);
     setUserName('');
+
+    // Phát sự kiện thông báo trạng thái auth đã thay đổi
+    window.dispatchEvent(new Event('auth-change'));
     router.push('/login'); // Tự động đẩy về trang đăng nhập
   };
 

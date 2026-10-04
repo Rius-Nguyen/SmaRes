@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import crypto from 'crypto';
+import connectDB from '@/app/lib/db';
 
 // 1. Khai báo Schema Reservation
 const reservationSchema = new mongoose.Schema({
@@ -17,15 +18,6 @@ const reservationSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 const Reservation = mongoose.models.Reservation || mongoose.model('Reservation', reservationSchema);
-
-// 2. Hàm kết nối MongoDB
-async function connectDB() {
-    if (mongoose.connection.readyState >= 1) return;
-    if (!process.env.MONGODB_URI) {
-        throw new Error('Chưa cấu hình MONGODB_URI trong file .env');
-    }
-    await mongoose.connect(process.env.MONGODB_URI);
-}
 
 // 3. Xử lý POST request tạo đơn đặt bàn
 export async function POST(request) {
