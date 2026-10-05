@@ -25,10 +25,10 @@ export default function Home() {
           </p>
 
           <div className="flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4">
-            <Link href="/menu" className="bg-yellow-500 text-black px-8 py-3 rounded-lg font-semibold hover:bg-yellow-400 transition-colors w-full sm:w-auto">
+            <Link href="/menu" className="interactive-btn bg-yellow-500 text-black px-8 py-3 rounded-lg font-semibold hover:bg-yellow-400 shadow-md w-full sm:w-auto">
               Khám phá thực đơn
             </Link>
-            <Link href="/booking" className="bg-green-800 text-white px-8 py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors w-full sm:w-auto">
+            <Link href="/booking" className="interactive-btn bg-green-800 text-white px-8 py-3 rounded-lg font-semibold hover:bg-green-700 shadow-md w-full sm:w-auto">
               Đặt bàn ngay
             </Link>
           </div>
@@ -43,41 +43,47 @@ export default function Home() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-left">
             {/* Món 1 */}
-            <div className="bg-white border border-gray-100 rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition-shadow">
-              <div className="h-56 bg-gray-200"><img src="/foods/pho_bo.jpg" alt="Phở Bò" className="w-full h-full object-cover" /></div>
+            <div className="interactive-card bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm group">
+              <div className="h-56 bg-gray-200 overflow-hidden"><img src="/foods/pho_bo.jpg" alt="Phở Bò" className="w-full h-full object-cover card-zoom-img" /></div>
               <div className="p-6">
                 <div className="flex justify-between items-center mb-3">
-                  <h3 className="text-lg font-bold text-gray-900">Phở Bò Wagyu Cao Cấp</h3>
+                  <h3 className="text-lg font-bold text-gray-900 group-hover:text-green-800 transition-colors">Phở Bò Wagyu Cao Cấp</h3>
                   <span className="text-green-700 font-bold">245.000đ</span>
                 </div>
                 <p className="text-gray-500 text-sm mb-6 line-clamp-2">Sự kết hợp tinh túy giữa nước dùng truyền thống ninh 24 giờ cùng thịt bò Wagyu A5 mềm tan khó cưỡng.</p>
-                <button className="text-sm font-bold text-gray-900 hover:text-green-700 flex items-center">Thêm vào giỏ hàng <span className="ml-2">→</span></button>
+                <button className="text-sm font-bold text-gray-900 hover:text-green-700 flex items-center transition-colors">
+                  Thêm vào giỏ hàng <span className="ml-2 inline-block transition-transform duration-200 group-hover:translate-x-1">→</span>
+                </button>
               </div>
             </div>
 
             {/* Món 2 */}
-            <div className="bg-white border border-gray-100 rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition-shadow">
-              <div className="h-56 bg-gray-200"><img src="/foods/cha_gio1.jpg" alt="Chả Giò" className="w-full h-full object-cover" /></div>
+            <div className="interactive-card bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm group">
+              <div className="h-56 bg-gray-200 overflow-hidden"><img src="/foods/cha_gio1.jpg" alt="Chả Giò" className="w-full h-full object-cover card-zoom-img" /></div>
               <div className="p-6">
                 <div className="flex justify-between items-center mb-3">
-                  <h3 className="text-lg font-bold text-gray-900">Chả Giò Cua Hoàng Đế</h3>
+                  <h3 className="text-lg font-bold text-gray-900 group-hover:text-green-800 transition-colors">Chả Giò Cua Hoàng Đế</h3>
                   <span className="text-green-700 font-bold">185.000đ</span>
                 </div>
                 <p className="text-gray-500 text-sm mb-6 line-clamp-2">Bánh tráng phơi sương giòn rụm bọc nhân cua hoàng đế và măng tây tươi, ăn kèm nước mắm chua ngọt đặc chế.</p>
-                <button className="text-sm font-bold text-gray-900 hover:text-green-700 flex items-center">Thêm vào giỏ hàng <span className="ml-2">→</span></button>
+                <button className="text-sm font-bold text-gray-900 hover:text-green-700 flex items-center transition-colors">
+                  Thêm vào giỏ hàng <span className="ml-2 inline-block transition-transform duration-200 group-hover:translate-x-1">→</span>
+                </button>
               </div>
             </div>
 
             {/* Món 3 */}
-            <div className="bg-white border border-gray-100 rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition-shadow">
-              <div className="h-56 bg-gray-200"><img src="/foods/vit_quay.jpg" alt="Vịt Quay" className="w-full h-full object-cover" /></div>
+            <div className="interactive-card bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm group">
+              <div className="h-56 bg-gray-200 overflow-hidden"><img src="/foods/vit_quay.jpg" alt="Vịt Quay" className="w-full h-full object-cover card-zoom-img" /></div>
               <div className="p-6">
                 <div className="flex justify-between items-center mb-3">
-                  <h3 className="text-lg font-bold text-gray-900">Vịt Quay Sốt Mật Ong Rừng</h3>
+                  <h3 className="text-lg font-bold text-gray-900 group-hover:text-green-800 transition-colors">Vịt Quay Sốt Mật Ong Rừng</h3>
                   <span className="text-green-700 font-bold">320.000đ</span>
                 </div>
                 <p className="text-gray-500 text-sm mb-6 line-clamp-2">Thịt vịt mềm mọng, lớp da giòn bóng bẩy tẩm ướp mật ong rừng Tây Bắc cùng thảo mộc thơm lừng.</p>
-                <button className="text-sm font-bold text-gray-900 hover:text-green-700 flex items-center">Thêm vào giỏ hàng <span className="ml-2">→</span></button>
+                <button className="text-sm font-bold text-gray-900 hover:text-green-700 flex items-center transition-colors">
+                  Thêm vào giỏ hàng <span className="ml-2 inline-block transition-transform duration-200 group-hover:translate-x-1">→</span>
+                </button>
               </div>
             </div>
           </div>
