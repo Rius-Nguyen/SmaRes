@@ -8,6 +8,7 @@ export interface IMenuItem {
   imageUrl: string;
   category: 'Món chính' | 'Đồ uống' | 'Tráng miệng';
   isAvailable: boolean;
+  isPreOrderOnly?: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -47,6 +48,10 @@ const MenuItemSchema = new Schema<IMenuItem>(
       type: Boolean,
       required: [true, 'Vui lòng thiết lập trạng thái món ăn'],
       default: true,
+    },
+    isPreOrderOnly: {
+      type: Boolean,
+      default: false, // Mặc định false (món phổ thông), true nếu là món hiếm bắt buộc đặt trước
     },
   },
   {
