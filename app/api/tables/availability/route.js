@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
+import connectDB from '@/app/lib/db';
 
 // 1. Khai báo Schema Table & Reservation
 const tableSchema = new mongoose.Schema({
@@ -17,15 +18,6 @@ const reservationSchema = new mongoose.Schema({
 
 const Table = mongoose.models.Table || mongoose.model('Table', tableSchema);
 const Reservation = mongoose.models.Reservation || mongoose.model('Reservation', reservationSchema);
-
-// 2. Hàm kết nối MongoDB
-async function connectDB() {
-    if (mongoose.connection.readyState >= 1) return;
-    if (!process.env.MONGODB_URI) {
-        throw new Error('Chưa cấu hình MONGODB_URI trong file .env');
-    }
-    await mongoose.connect(process.env.MONGODB_URI);
-}
 
 // 3. Xử lý GET request kiểm tra bàn trống
 export async function GET(request) {
