@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
+import connectDB from '@/app/lib/db';
 
 // 1. Tái sử dụng Schema Reservation
 const reservationSchema = new mongoose.Schema({
@@ -15,15 +16,6 @@ const reservationSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 const Reservation = mongoose.models.Reservation || mongoose.model('Reservation', reservationSchema);
-
-// 2. Hàm kết nối MongoDB
-async function connectDB() {
-    if (mongoose.connection.readyState >= 1) return;
-    if (!process.env.MONGODB_URI) {
-        throw new Error('Chưa cấu hình MONGODB_URI trong file .env');
-    }
-    await mongoose.connect(process.env.MONGODB_URI);
-}
 
 // 3. Xử lý PATCH request hủy đơn đặt bàn
 export async function PATCH(request, { params }) {

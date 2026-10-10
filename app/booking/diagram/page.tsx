@@ -101,10 +101,10 @@ export default function BookingDiagramPage() {
              </ul>
           </div>
 
-          <Link href="/booking/success" className="block w-full text-center bg-green-800 text-white font-bold py-3 rounded-lg hover:bg-green-900 transition-colors">
+          <Link href="/booking/success" className="interactive-btn block w-full text-center bg-green-800 text-white font-bold py-3 rounded-lg hover:bg-green-900 shadow-md">
             Xác nhận đặt bàn
           </Link>
-          <button className="block w-full text-center text-gray-500 font-semibold py-3 mt-2 hover:text-gray-800">
+          <button className="interactive-btn block w-full text-center text-gray-500 font-semibold py-3 mt-2 hover:text-gray-800 hover:bg-gray-100 rounded-lg">
             Hủy
           </button>
         </div>

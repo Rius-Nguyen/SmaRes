@@ -45,6 +45,9 @@ export default function LoginPage() {
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
         
+        // Bắn sự kiện để Navbar cập nhật ngay lập tức mà không cần F5
+        window.dispatchEvent(new Event('auth-change'));
+
         alert("Đăng nhập thành công!");
         router.push('/'); // Chuyển hướng về trang chủ SmaRes
       } else {
@@ -131,7 +134,7 @@ export default function LoginPage() {
           <button 
             type="submit" 
             disabled={isLoading}
-            className={`w-full text-white font-bold py-3 rounded-lg transition-colors mt-4 ${isLoading ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-800 hover:bg-green-900'}`}
+            className={`w-full text-white font-bold py-3 rounded-lg mt-4 shadow-sm ${isLoading ? 'bg-gray-400 cursor-not-allowed' : 'interactive-btn bg-green-800 hover:bg-green-900'}`}
           >
             {isLoading ? 'Đang kiểm tra...' : 'Đăng Nhập'}
           </button>

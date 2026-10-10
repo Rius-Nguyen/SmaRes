@@ -12,7 +12,7 @@ app.use(cookieParser()); // Công cụ bắt buộc để đọc được Cookie
 
 // Cấu hình CORS để Frontend gọi được API
 app.use(cors({
-  origin: 'http://127.0.0.1:5000', // Đổi URL này thành URL chạy Frontend của bạn (VD: localhost:3000)
+  origin: 'http://localhost:3000', // Đã sửa lại cho khớp với cổng Frontend Next.js của bạn
   credentials: true // Bắt buộc phải là true để trình duyệt gửi Cookie Token đi
 }));
 
@@ -21,6 +21,8 @@ connectDB();
 
 // Khai báo đường dẫn API
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/orders', require('./routes/orders')); 
+app.use('/api/menu', require('./routes/menu')); // <--- THÊM DÒNG NÀY CHO TASK TK-94
 
 // Mở cổng máy chủ
 const PORT = process.env.PORT || 5000;
