@@ -25,7 +25,7 @@ export default function OrderHistoryPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Kích hoạt gọi API lấy dữ liệu thực tế ngay khi tải trang
+  // Kích hoạt gọi API lấy dữ liệu thực tế ngay khi tải trang (Đã tối ưu hóa bộ lọc cấu trúc dữ liệu)
   const fetchOrders = async () => {
     try {
       setLoading(true);
@@ -36,7 +36,22 @@ export default function OrderHistoryPage() {
       }
 
       const data = await res.json();
-      setOrders(data.orders || data);
+      
+      // Xử lý linh hoạt các trường hợp cấu trúc JSON trả về từ API
+      let orderList: Order[] = [];
+      if (Array.isArray(data)) {
+        orderList = data;
+      } else if (data.orders && Array.isArray(data.orders)) {
+        orderList = data.orders;
+      } else if (data.order) {
+        orderList = [data.order];
+      } else if (data.data && Array.isArray(data.data)) {
+        orderList = data.data;
+      } else {
+        orderList = [];
+      }
+
+      setOrders(orderList);
     } catch (err: any) {
       console.error('Lỗi tích hợp API:', err);
       setError(err.message || 'Đã xảy ra lỗi không xác định');
@@ -49,7 +64,7 @@ export default function OrderHistoryPage() {
     fetchOrders();
   }, []);
 
-  // Bước 4: Hàm xử lý gọi API cập nhật trạng thái đơn hàng (TK-113)
+  // Hàm xử lý gọi API cập nhật trạng thái đơn hàng (TK-113)
   const handleUpdateStatus = async (orderId: string, newStatus: string) => {
     try {
       // Cập nhật giao diện tạm thời (Optimistic UI) giúp mượt mà
@@ -60,7 +75,7 @@ export default function OrderHistoryPage() {
       );
 
       const res = await fetch(`/api/orders/${orderId}`, {
-        method: 'PATCH', // Hoặc 'PUT' tùy theo route API của dự án
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -122,7 +137,7 @@ export default function OrderHistoryPage() {
                 <span className="font-mono text-sm font-bold text-gray-700">{order._id}</span>
               </div>
 
-              {/* Bước 3: Đã tích hợp Dropdown Action đổi trạng thái cho Staff (TK-113) */}
+              {/* Dropdown Action đổi trạng thái cho Staff (TK-113) */}
               <div className="flex items-center gap-2">
                 <span className="text-xs text-gray-400 font-medium">Trạng thái:</span>
                 <select

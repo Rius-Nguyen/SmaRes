@@ -1,35 +1,35 @@
 import { NextResponse } from 'next/server';
 
-// 1. Phương thức GET: Lấy danh sách đơn hàng cho trang UI hiển thị
+let memoryOrders = [
+  {
+    _id: "ORD2026101101",
+    phone: "0905123456",
+    totalAmount: 150000,
+    status: "PENDING",
+    items: [
+      { name: "Phở Bò Đặc Biệt", price: 75000, quantity: 2 }
+    ],
+    createdAt: new Date().toISOString()
+  },
+  {
+    _id: "ORD2026101102",
+    phone: "0918999888",
+    totalAmount: 220000,
+    status: "COOKING",
+    items: [
+      { name: "Cơm Gà Giòn Da", price: 110000, quantity: 2 }
+    ],
+    createdAt: new Date().toISOString()
+  }
+];
+
+// 1. Phương thức GET: Lấy danh sách đơn hàng
 export async function GET() {
   try {
-    // Dữ liệu mẫu (hoặc bạn có thể thay thế bằng logic gọi Mongoose Model: await Order.find())
-    const mockOrders = [
-      {
-        _id: "ORD2026101101",
-        phone: "0905123456",
-        totalAmount: 150000,
-        status: "PENDING",
-        items: [
-          { name: "Phở Bò Đặc Biệt", price: 75000, quantity: 2 }
-        ]
-      },
-      {
-        _id: "ORD2026101102",
-        phone: "0918999888",
-        totalAmount: 220000,
-        status: "COOKING",
-        items: [
-          { name: "Cơm Gà Giòn Da", price: 110000, quantity: 2 }
-        ]
-      }
-    ];
-
     return NextResponse.json({ 
       success: true, 
-      orders: mockOrders 
+      orders: memoryOrders 
     }, { status: 200 });
-
   } catch (error) {
     console.error('Lỗi API GET /api/orders:', error);
     return NextResponse.json({ 
@@ -39,25 +39,26 @@ export async function GET() {
   }
 }
 
-// 2. Phương thức POST: Nhận payload từ Frontend để khởi tạo và lưu đơn hàng mới
+// 2. Phương thức POST: Tạo đơn hàng mới và lưu vào bộ nhớ tạm
 export async function POST(request) {
   try {
     const body = await request.json();
     
-    // Logic xử lý dữ liệu và tính toán tổng tiền (kế thừa từ task TK-102 của nhóm)
-    const savedOrder = {
+    const newOrder = {
       _id: "ORD" + Date.now(),
       ...body,
-      status: "PENDING",
+      status: body.status || "PENDING",
       createdAt: new Date().toISOString()
     };
+
+    memoryOrders.unshift(newOrder);
 
     return NextResponse.json({
       success: true,
       message: 'Tạo đơn hàng thành công',
-      orderId: savedOrder._id,
-      totalPrice: savedOrder.totalAmount,
-      order: savedOrder
+      orderId: newOrder._id,
+      totalPrice: newOrder.totalAmount,
+      order: newOrder
     }, { status: 201 });
 
   } catch (error) {
