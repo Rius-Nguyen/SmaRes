@@ -6,12 +6,6 @@ const OrderSchema = new mongoose.Schema({
     ref: 'User', 
     required: false 
   },
-  // THÊM DÒNG NÀY: Để liên kết Đơn hàng với Bàn (Bước 2 trong workflow)
-  tableId: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'Table', 
-    required: false 
-  },
   items: [
     {
       foodId: { 
