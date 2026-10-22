@@ -29,6 +29,6 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     "**/*.mts"
-  ],
+, "components.png/Navbar"  ],
   "exclude": ["node_modules"]
 }

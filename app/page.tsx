@@ -1,6 +1,20 @@
+"use client";
+
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 export default function Home() {
+  // Tạm thời khai báo mặc định là false (chưa đăng nhập)
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  // State báo hiệu Client đã tải xong để tránh lỗi Hydration
+  const [isMounted, setIsMounted] = useState(false);
+
+  // Dùng useEffect để đồng bộ giao diện sau khi tải
+  useEffect(() => {
+    setIsMounted(true);
+    // Code kiểm tra đăng nhập thực tế sẽ nằm ở đây
+  }, []);
+
   return (
     <main className="flex flex-col min-h-screen">
       
@@ -51,7 +65,13 @@ export default function Home() {
                     <span className="text-green-700 font-bold">245.000đ</span>
                   </div>
                   <p className="text-gray-500 text-sm mb-6 line-clamp-2">Sự kết hợp tinh túy giữa nước dùng truyền thống ninh 24 giờ cùng thịt bò Wagyu A5 mềm tan khó cưỡng.</p>
-                  <button className="text-sm font-bold text-gray-900 hover:text-green-700 flex items-center">Thêm vào giỏ hàng <span className="ml-2">→</span></button>
+                  
+                  {/* Nút đã được bọc điều kiện */}
+                  {isMounted && isLoggedIn && (
+                    <button className="text-sm font-bold text-gray-900 hover:text-green-700 flex items-center">
+                      Thêm vào giỏ hàng <span className="ml-2">→</span>
+                    </button>
+                  )}
                </div>
             </div>
 
@@ -64,7 +84,13 @@ export default function Home() {
                     <span className="text-green-700 font-bold">185.000đ</span>
                   </div>
                   <p className="text-gray-500 text-sm mb-6 line-clamp-2">Bánh tráng phơi sương giòn rụm bọc nhân cua hoàng đế và măng tây tươi, ăn kèm nước mắm chua ngọt đặc chế.</p>
-                  <button className="text-sm font-bold text-gray-900 hover:text-green-700 flex items-center">Thêm vào giỏ hàng <span className="ml-2">→</span></button>
+                  
+                  {/* Nút đã được bọc điều kiện */}
+                  {isMounted && isLoggedIn && (
+                    <button className="text-sm font-bold text-gray-900 hover:text-green-700 flex items-center">
+                      Thêm vào giỏ hàng <span className="ml-2">→</span>
+                    </button>
+                  )}
                </div>
             </div>
 
@@ -77,7 +103,13 @@ export default function Home() {
                     <span className="text-green-700 font-bold">320.000đ</span>
                   </div>
                   <p className="text-gray-500 text-sm mb-6 line-clamp-2">Thịt vịt mềm mọng, lớp da giòn bóng bẩy tẩm ướp mật ong rừng Tây Bắc cùng thảo mộc thơm lừng.</p>
-                  <button className="text-sm font-bold text-gray-900 hover:text-green-700 flex items-center">Thêm vào giỏ hàng <span className="ml-2">→</span></button>
+                  
+                  {/* Nút đã được bọc điều kiện */}
+                  {isMounted && isLoggedIn && (
+                    <button className="text-sm font-bold text-gray-900 hover:text-green-700 flex items-center">
+                      Thêm vào giỏ hàng <span className="ml-2">→</span>
+                    </button>
+                  )}
                </div>
             </div>
           </div>

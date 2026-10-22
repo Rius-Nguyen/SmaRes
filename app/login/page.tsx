@@ -38,7 +38,12 @@ export default function LoginPage() {
         body: JSON.stringify(formData),
       });
 
-      const data = await response.json();
+      let data: { token?: string; user?: unknown; message?: string } = {};
+      try {
+        data = await response.json();
+      } catch {
+        data = { message: `Lỗi phản hồi từ máy chủ (${response.status})` };
+      }
 
       if (response.ok) {
         // Lưu token và thông tin user vào trình duyệt để giữ trạng thái đăng nhập
