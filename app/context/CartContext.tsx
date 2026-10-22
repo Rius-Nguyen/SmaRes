@@ -13,6 +13,21 @@ export interface CartItem {
   quantity: number;
 }
 
+// Cấu trúc thông tin đặt bàn trong luồng workflow
+export interface BookingInfo {
+  name: string;
+  phone: string;
+  email?: string;
+  date: string;
+  time: string;
+  guests: string | number;
+  note?: string;
+  tableNumber?: string;
+  tableType?: string;
+  tableCapacity?: string | number;
+  bookingCode?: string;
+}
+
 // 2. Kiểu dữ liệu cho Cart Context
 interface CartContextType {
   cart: CartItem[];
@@ -23,25 +38,43 @@ interface CartContextType {
   totalItems: number;
   totalPrice: number;
   isLoaded: boolean;
+
+  // Booking Info & Workflow helpers
+  bookingInfo: BookingInfo | null;
+  setBookingInfo: (info: BookingInfo | null | ((prev: BookingInfo | null) => BookingInfo | null)) => void;
+  clearBookingInfo: () => void;
+  hasActiveBooking: boolean;
+
+  // Special dishes / Pre-order helpers
+  hasSpecialItems: boolean;
+  getSpecialItems: () => CartItem[];
+  canAddPreOrderItem: () => boolean;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 const LOCAL_STORAGE_KEY = 'smares_cart';
+const LOCAL_STORAGE_BOOKING_KEY = 'smares_booking_draft';
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [bookingInfo, setBookingInfoState] = useState<BookingInfo | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // 1. Khôi phục giỏ hàng từ localStorage khi load trang lần đầu
+  // 1. Khôi phục giỏ hàng và thông tin đặt bàn từ localStorage khi load trang lần đầu
   useEffect(() => {
     try {
       const savedCart = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (savedCart) {
         setCart(JSON.parse(savedCart));
       }
+
+      const savedBooking = localStorage.getItem(LOCAL_STORAGE_BOOKING_KEY);
+      if (savedBooking) {
+        setBookingInfoState(JSON.parse(savedBooking));
+      }
     } catch (error) {
-      console.error('Lỗi khi đọc giỏ hàng từ localStorage:', error);
+      console.error('Lỗi khi đọc dữ liệu từ localStorage:', error);
     } finally {
       setIsLoaded(true);
     }
@@ -57,6 +90,38 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }
     }
   }, [cart, isLoaded]);
+
+  // 3. Tự động lưu thông tin đặt bàn vào localStorage
+  useEffect(() => {
+    if (isLoaded) {
+      try {
+        if (bookingInfo) {
+          localStorage.setItem(LOCAL_STORAGE_BOOKING_KEY, JSON.stringify(bookingInfo));
+        } else {
+          localStorage.removeItem(LOCAL_STORAGE_BOOKING_KEY);
+        }
+      } catch (error) {
+        console.error('Lỗi khi lưu thông tin đặt bàn vào localStorage:', error);
+      }
+    }
+  }, [bookingInfo, isLoaded]);
+
+  // Cập nhật thông tin đặt bàn
+  const setBookingInfo = (
+    info: BookingInfo | null | ((prev: BookingInfo | null) => BookingInfo | null)
+  ) => {
+    setBookingInfoState(info);
+  };
+
+  // Xóa thông tin đặt bàn
+  const clearBookingInfo = () => {
+    setBookingInfoState(null);
+    try {
+      localStorage.removeItem(LOCAL_STORAGE_BOOKING_KEY);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   // Thêm món vào giỏ
   const addToCart = (item: Omit<CartItem, 'quantity'>, quantity: number = 1) => {
@@ -106,6 +171,20 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     0
   );
 
+  // Helper: Đã hoàn tất chọn thông tin và chọn bàn (Bước 1 & Bước 2)
+  const hasActiveBooking = Boolean(
+    bookingInfo && bookingInfo.tableNumber && bookingInfo.name && bookingInfo.phone
+  );
+
+  // Helper: Kiểm tra giỏ hàng có món đặc biệt (isPreOrderOnly) hay không
+  const hasSpecialItems = cart.some((item) => item.isPreOrderOnly === true);
+
+  // Helper: Lấy danh sách các món đặc biệt trong giỏ hàng
+  const getSpecialItems = () => cart.filter((item) => item.isPreOrderOnly === true);
+
+  // Helper: Kiểm tra người dùng có đủ điều kiện đặt món đặc biệt hay không (phải có đơn đặt bàn đã chọn bàn)
+  const canAddPreOrderItem = () => hasActiveBooking;
+
   return (
     <CartContext.Provider
       value={{
@@ -117,6 +196,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         totalItems,
         totalPrice,
         isLoaded,
+        bookingInfo,
+        setBookingInfo,
+        clearBookingInfo,
+        hasActiveBooking,
+        hasSpecialItems,
+        getSpecialItems,
+        canAddPreOrderItem,
       }}
     >
       {children}
