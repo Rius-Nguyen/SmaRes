@@ -75,7 +75,7 @@ export default function Navbar() {
       </Link>
 
       {/* Cụm Menu ở giữa */}
-      <div className="hidden md:flex space-x-8 text-sm font-semibold text-gray-700 shrink-0">
+      <div className="hidden md:flex space-x-8 text-base font-semibold text-gray-700 shrink-0">
         <Link href="/" className="nav-link-subtle hover:text-green-700 py-1 whitespace-nowrap">Trang chủ</Link>
         <Link href="/menu" className="nav-link-subtle hover:text-green-700 py-1 whitespace-nowrap">Thực đơn</Link>
         <Link href="/about" className="nav-link-subtle hover:text-green-700 py-1 whitespace-nowrap">Về chúng tôi</Link>
@@ -87,20 +87,20 @@ export default function Navbar() {
         {isLoggedIn ? (
           // Hiển thị khi ĐÃ đăng nhập
           <>
-            <span className="text-sm font-semibold text-gray-700 hidden sm:block whitespace-nowrap">Chào, {userName}</span>
-            <Link href="/history" className="interactive-btn text-sm font-semibold text-green-700 hover:text-green-800 px-3 py-1.5 rounded-full hover:bg-green-50 whitespace-nowrap">
+            <span className="text-sm md:text-base font-semibold text-gray-700 hidden sm:block whitespace-nowrap">Chào, {userName}</span>
+            <Link href="/history" className="interactive-btn text-sm md:text-base font-semibold text-green-700 hover:text-green-800 px-3.5 py-1.5 rounded-full hover:bg-green-50 whitespace-nowrap">
               Lịch sử
             </Link>
             <button 
               onClick={handleLogout} 
-              className="interactive-btn text-sm font-semibold text-red-500 hover:text-red-700 px-4 py-2 border border-red-200 rounded-full bg-red-50 hover:bg-red-100 whitespace-nowrap"
+              className="interactive-btn text-sm md:text-base font-semibold text-red-500 hover:text-red-700 px-4 py-2 border border-red-200 rounded-full bg-red-50 hover:bg-red-100 whitespace-nowrap"
             >
               Đăng xuất
             </button>
           </>
         ) : (
           // Hiển thị khi CHƯA đăng nhập
-          <Link href="/login" className="interactive-btn text-sm font-semibold px-4 py-2 border border-gray-300 rounded-full hover:border-gray-400 hover:bg-gray-50 whitespace-nowrap">
+          <Link href="/login" className="interactive-btn text-sm md:text-base font-semibold px-4 py-2 border border-gray-300 rounded-full hover:border-gray-400 hover:bg-gray-50 whitespace-nowrap">
             Đăng nhập
           </Link>
         )}

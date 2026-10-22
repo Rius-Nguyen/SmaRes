@@ -6,9 +6,10 @@ export interface IMenuItem {
   price: number;
   description: string;
   imageUrl: string;
-  category: 'Món chính' | 'Đồ uống' | 'Tráng miệng';
+  category: 'Khai vị' | 'Món chính' | 'Đồ uống' | 'Tráng miệng';
   isAvailable: boolean;
   isPreOrderOnly?: boolean;
+  preparationNote?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -39,8 +40,8 @@ const MenuItemSchema = new Schema<IMenuItem>(
       type: String,
       required: [true, 'Vui lòng chọn danh mục món ăn'],
       enum: {
-        values: ['Món chính', 'Đồ uống', 'Tráng miệng'],
-        message: '{VALUE} không phải là danh mục hợp lệ (Món chính, Đồ uống, Tráng miệng)',
+        values: ['Khai vị', 'Món chính', 'Đồ uống', 'Tráng miệng'],
+        message: '{VALUE} không phải là danh mục hợp lệ (Khai vị, Món chính, Đồ uống, Tráng miệng)',
       },
       trim: true,
     },
@@ -52,6 +53,11 @@ const MenuItemSchema = new Schema<IMenuItem>(
     isPreOrderOnly: {
       type: Boolean,
       default: false, // Mặc định false (món phổ thông), true nếu là món hiếm bắt buộc đặt trước
+    },
+    preparationNote: {
+      type: String,
+      default: '',
+      trim: true,
     },
   },
   {

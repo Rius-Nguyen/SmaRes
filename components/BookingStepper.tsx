@@ -16,13 +16,13 @@ export default function BookingStepper({ currentStep }: BookingStepperProps) {
   ];
 
   return (
-    <div className="w-full bg-white border-b border-gray-100 shadow-sm py-4 px-4 sm:px-6">
+    <div className="w-full bg-white border-b border-gray-100 shadow-sm py-5 px-4 sm:px-6">
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center justify-between relative">
           {/* Đường line kết nối các bước */}
-          <div className="absolute top-5 left-8 right-8 h-0.5 bg-gray-200 -z-0 hidden md:block">
+          <div className="absolute top-6 left-10 right-10 h-1 bg-gray-200 -z-0 hidden md:block rounded-full">
             <div
-              className="h-full bg-green-700 transition-all duration-500"
+              className="h-full bg-green-700 transition-all duration-500 rounded-full"
               style={{
                 width:
                   currentStep === 1
@@ -44,7 +44,7 @@ export default function BookingStepper({ currentStep }: BookingStepperProps) {
               <div key={step.number} className="flex-1 flex flex-col items-center text-center relative z-10 px-1">
                 {/* Vòng tròn số bước */}
                 <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-300 shadow-sm ${
+                  className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center font-bold text-lg sm:text-xl transition-all duration-300 shadow-sm ${
                     isCompleted
                       ? 'bg-green-700 text-white ring-4 ring-green-100'
                       : isCurrent
@@ -53,7 +53,7 @@ export default function BookingStepper({ currentStep }: BookingStepperProps) {
                   }`}
                 >
                   {isCompleted ? (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
                     </svg>
                   ) : (
@@ -62,19 +62,19 @@ export default function BookingStepper({ currentStep }: BookingStepperProps) {
                 </div>
 
                 {/* Tiêu đề & mô tả */}
-                <div className="mt-2">
+                <div className="mt-3">
                   <p
-                    className={`text-xs sm:text-sm font-bold whitespace-nowrap ${
+                    className={`text-base sm:text-lg font-bold whitespace-nowrap ${
                       isCurrent
                         ? 'text-green-800'
                         : isCompleted
-                        ? 'text-gray-800'
+                        ? 'text-gray-900'
                         : 'text-gray-400'
                     }`}
                   >
                     {step.title}
                   </p>
-                  <p className="text-[11px] text-gray-500 hidden sm:block">
+                  <p className="text-xs sm:text-sm text-gray-500 font-medium hidden sm:block mt-1">
                     {step.desc}
                   </p>
                 </div>
