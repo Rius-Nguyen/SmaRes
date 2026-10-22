@@ -207,10 +207,10 @@ export default function BookingMenuPage() {
       </div>
 
       {/* Nội dung chính: Danh mục + Danh sách món + Giỏ hàng mini */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 grid grid-cols-1 lg:grid-cols-4 gap-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        {/* Cột trái (3 phần): Danh mục tab & Grid thẻ món ăn */}
-        <div className="lg:col-span-3">
+        {/* Cột trái (8/12 cột): Danh mục tab & Grid thẻ món ăn */}
+        <div className="lg:col-span-8">
           {/* Thanh chuyển tab danh mục & Ô tìm kiếm */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 pb-4 border-b border-gray-200 mb-6">
             <div className="flex items-center space-x-2 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
@@ -265,7 +265,7 @@ export default function BookingMenuPage() {
           </div>
 
           {/* Grid danh sách món ăn - CHỮ KHÔNG BỊ CẮT, HIỂN THỊ ĐẦY ĐỦ */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
             {filteredDishes.map((dish) => {
               const qtyInCart = getItemQuantityInCart(dish._id);
 
@@ -370,8 +370,8 @@ export default function BookingMenuPage() {
           </div>
         </div>
 
-        {/* Cột phải (1 phần): Tóm tắt Giỏ hàng đặt trước */}
-        <div className="lg:col-span-1">
+        {/* Cột phải (4/12 cột): Tóm tắt Giỏ hàng đặt trước rộng rãi, không bị chật */}
+        <div className="lg:col-span-4">
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sticky top-36">
             <div className="flex items-center justify-between border-b pb-4 mb-4">
               <div className="flex items-center gap-2">
@@ -461,22 +461,22 @@ export default function BookingMenuPage() {
               </div>
             </div>
 
-            {/* Các nút hành động: DUY NHẤT 1 NƠI XÁC NHẬN VÀ 1 NƠI BỎ QUA RÕ RÀNG */}
-            <div className="mt-5 space-y-3">
+            {/* Các nút hành động: RỘNG RÃI, THOÁNG ĐÃNG, KHÔNG BỊ CHẬT HOẶC XUỐNG DÒNG LỖI */}
+            <div className="mt-6 space-y-3">
               <button
                 onClick={handleProceedToConfirm}
-                className="interactive-btn w-full bg-green-800 hover:bg-green-900 text-white font-bold py-3.5 rounded-xl text-sm sm:text-base shadow-md transition-all flex items-center justify-center gap-2"
+                className="interactive-btn w-full bg-green-800 hover:bg-green-900 text-white font-bold py-3.5 px-4 rounded-xl text-sm sm:text-base shadow-md transition-all flex items-center justify-center gap-2 whitespace-nowrap"
               >
                 <span>Xác nhận thực đơn & Tiếp tục</span>
-                <span>→</span>
+                <span className="text-base font-bold">→</span>
               </button>
 
               <button
                 onClick={handleSkipDishes}
-                className="interactive-btn w-full bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold py-3 rounded-xl text-sm transition-colors flex items-center justify-center gap-1.5 border border-gray-200"
+                className="interactive-btn w-full bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold py-3 px-4 rounded-xl text-sm transition-colors flex items-center justify-center gap-2 border border-gray-200"
               >
-                <span>Bỏ qua chọn món (Gọi món tại bàn)</span>
-                <span>⏩</span>
+                <span>Bỏ qua chọn món (Gọi tại bàn)</span>
+                <span className="text-xs">⏩</span>
               </button>
 
               {cart.length > 0 && (
