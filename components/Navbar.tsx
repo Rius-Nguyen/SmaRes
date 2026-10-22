@@ -4,10 +4,13 @@ import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { useCart } from '@/app/context/CartContext';
+
 export default function Navbar() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userName, setUserName] = useState('');
   const router = useRouter();
+  const { totalItems, hasActiveBooking } = useCart();
 
   // Tự động kiểm tra trạng thái đăng nhập khi load trang hoặc khi có sự kiện đăng nhập/đăng xuất
   useEffect(() => {
@@ -99,6 +102,20 @@ export default function Navbar() {
           // Hiển thị khi CHƯA đăng nhập
           <Link href="/login" className="interactive-btn text-sm font-semibold px-4 py-2 border border-gray-300 rounded-full hover:border-gray-400 hover:bg-gray-50 whitespace-nowrap">
             Đăng nhập
+          </Link>
+        )}
+
+        {/* Nút Giỏ hàng nếu có món */}
+        {totalItems > 0 && (
+          <Link
+            href={hasActiveBooking ? '/booking/menu' : '/booking'}
+            className="interactive-btn relative p-2 text-gray-700 hover:text-green-800 hover:bg-gray-100 rounded-full transition-colors flex items-center justify-center"
+            title="Thực đơn đã chọn"
+          >
+            <span className="text-xl">🛒</span>
+            <span className="absolute -top-1 -right-1 bg-green-700 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center shadow-sm">
+              {totalItems}
+            </span>
           </Link>
         )}
 
