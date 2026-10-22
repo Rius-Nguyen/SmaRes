@@ -38,12 +38,21 @@ export default function LoginPage() {
         body: JSON.stringify(formData),
       });
 
-      const data = await response.json();
+      let data: { token?: string; user?: unknown; message?: string } = {};
+      try {
+        data = await response.json();
+      } catch {
+        data = { message: `Lỗi phản hồi từ máy chủ (${response.status})` };
+      }
 
       if (response.ok) {
         // Lưu token và thông tin user vào trình duyệt để giữ trạng thái đăng nhập
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
+        if (data.token) {
+          localStorage.setItem('token', data.token);
+        }
+        if (data.user) {
+          localStorage.setItem('user', JSON.stringify(data.user));
+        }
         
         // Bắn sự kiện để Navbar cập nhật ngay lập tức mà không cần F5
         window.dispatchEvent(new Event('auth-change'));

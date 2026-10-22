@@ -57,13 +57,18 @@ export default function RegisterPage() {
         }),
       });
 
-      const data = await response.json();
+      let data: { message?: string } = {};
+      try {
+        data = await response.json();
+      } catch {
+        data = { message: `Lỗi phản hồi từ máy chủ (${response.status})` };
+      }
 
       if (response.ok) {
         alert("Đăng ký tài khoản thành công! Xin mời đăng nhập.");
         router.push('/login'); // Chuyển hướng sang trang đăng nhập
       } else {
-        alert(`Lỗi: ${data.message || "Không thể đăng ký"}`);
+        alert(`Lỗi: ${data?.message || "Không thể đăng ký"}`);
       }
     } catch (error) {
       console.error("Lỗi khi gọi API:", error);
