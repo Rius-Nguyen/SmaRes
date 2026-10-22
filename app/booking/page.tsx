@@ -63,7 +63,7 @@ export default function BookingPage() {
               <textarea rows={4} placeholder="Ví dụ: Ghế trẻ em, dị ứng hải sản, tổ chức sinh nhật..." className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-700 outline-none transition-all"></textarea>
             </div>
             <div className="md:col-span-2 mt-4">
-              <Link href="/booking/diagram" className="block w-full text-center bg-green-800 text-white font-bold py-4 rounded-lg hover:bg-green-900 transition-colors shadow-md">
+              <Link href="/booking/diagram" className="interactive-btn block w-full text-center bg-green-800 text-white font-bold py-4 rounded-lg hover:bg-green-900 shadow-md">
                 Xác Nhận Đặt Bàn Ngay
               </Link>
             </div>

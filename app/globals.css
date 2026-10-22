@@ -12,8 +12,108 @@
   --font-mono: var(--font-geist-mono);
 }
 
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Con trỏ chuột dạng bàn tay toàn cục cho các phần tử tương tác */
+button,
+[role="button"],
+input[type="button"],
+input[type="submit"],
+input[type="reset"],
+select,
+summary,
+a {
+  cursor: pointer;
+}
+
+button:disabled,
+input:disabled,
+[aria-disabled="true"],
+.cursor-not-allowed {
+  cursor: not-allowed !important;
+}
+
+/* Hiệu ứng nút bấm nhẹ nhàng tinh tế (Subtle Interactive Button) */
+.interactive-btn {
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              background-color 0.2s ease,
+              color 0.2s ease,
+              border-color 0.2s ease;
+  will-change: transform;
+}
+
+.interactive-btn:hover:not(:disabled) {
+  transform: translateY(-1.5px) scale(1.025);
+  box-shadow: 0 6px 18px -3px rgba(0, 0, 0, 0.08);
+}
+
+.interactive-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.975);
+}
+
+/* Hiệu ứng thẻ card món ăn nổi nhẹ tinh tế (Subtle Interactive Card) */
+.interactive-card {
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.25s ease;
+  will-change: transform, box-shadow;
+}
+
+.interactive-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 14px 28px -6px rgba(0, 0, 0, 0.09), 0 4px 10px -2px rgba(0, 0, 0, 0.04);
+}
+
+/* Ảnh món ăn zoom mượt mà khi rê chuột */
+.card-zoom-img {
+  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
+}
+
+.interactive-card:hover .card-zoom-img,
+.group:hover .card-zoom-img {
+  transform: scale(1.045);
+}
+
+/* Hiệu ứng đường gạch chân trượt thanh lịch cho Menu điều hướng */
+.nav-link-subtle {
+  position: relative;
+  transition: color 0.2s ease;
+}
+
+.nav-link-subtle::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  width: 0%;
+  height: 2px;
+  background-color: #15803d; /* green-700 */
+  border-radius: 9999px;
+  transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1), left 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.nav-link-subtle:hover::after {
+  width: 100%;
+  left: 0;
+}
+
+/* Ô input nhập liệu viền phát sáng êm dịu */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  border-color: #15803d !important;
+  box-shadow: 0 0 0 3px rgba(21, 128, 61, 0.15) !important;
+}

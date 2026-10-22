@@ -37,9 +37,9 @@ export default function Footer() {
       <div className="max-w-7xl mx-auto pt-8 flex flex-col md:flex-row justify-between items-center text-xs text-gray-500">
          <p>© 2026 SmaRes Restaurant. Mọi quyền được bảo lưu.</p>
          <div className="flex space-x-6 mt-4 md:mt-0">
-            <a href="#" className="hover:text-white transition-colors">Facebook</a>
-            <a href="#" className="hover:text-white transition-colors">Instagram</a>
-            <a href="#" className="hover:text-white transition-colors">TripAdvisor</a>
+            <a href="#" className="hover:text-white transition-all hover:-translate-y-0.5 inline-block">Facebook</a>
+            <a href="#" className="hover:text-white transition-all hover:-translate-y-0.5 inline-block">Instagram</a>
+            <a href="#" className="hover:text-white transition-all hover:-translate-y-0.5 inline-block">TripAdvisor</a>
          </div>
       </div>
     </footer>

@@ -21,7 +21,7 @@ const menuData = [
 
 export default function MenuPage() {
     const [activeCategory, setActiveCategory] = useState("Khai vị");
-    // State mới: Lưu từ khóa tìm kiếm
+    // State: Lưu từ khóa tìm kiếm
     const [searchQuery, setSearchQuery] = useState("");
     
     const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -29,6 +29,10 @@ export default function MenuPage() {
 
     useEffect(() => {
         setIsMounted(true);
+        const token = localStorage.getItem('token');
+        if (token) {
+            setIsLoggedIn(true);
+        }
     }, []);
 
     // 2. LOGIC TÌM KIẾM & LỌC
@@ -55,20 +59,23 @@ export default function MenuPage() {
             {/* Thanh danh mục & Ô tìm kiếm */}
             <div className="relative flex flex-col md:flex-row items-center justify-center py-6 border-b px-4 max-w-7xl mx-auto min-h-[80px]">
                 
-                {/* Các nút danh mục (Vẫn nằm giữa) */}
-                <div className="flex space-x-4 md:space-x-8 overflow-x-auto">
+                {/* Các nút danh mục (Nằm giữa) */}
+                <div className="flex space-x-3 md:space-x-6 overflow-x-auto">
                     {["Khai vị", "Món chính", "Tráng miệng", "Đồ uống"].map((cat) => (
                         <button 
                             key={cat}
-                            onClick={() => setActiveCategory(cat)}
-                            className={`px-6 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${activeCategory === cat ? "bg-green-800 text-white" : "text-gray-500 hover:text-green-800 hover:bg-gray-50"}`}
+                            onClick={() => {
+                                setActiveCategory(cat);
+                                setSearchQuery("");
+                            }}
+                            className={`interactive-btn px-6 py-2.5 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${activeCategory === cat ? "bg-green-800 text-white shadow-sm" : "text-gray-600 hover:text-green-800 hover:bg-gray-100/80"}`}
                         >
                             {cat === "Đồ uống" ? "Đồ uống & Rượu" : cat}
                         </button>
                     ))}
                 </div>
 
-                {/* Ô Search (Đặt đúng vị trí sao đỏ góc phải) */}
+                {/* Ô Search (Đặt đúng vị trí góc phải) */}
                 <div className="md:absolute right-4 mt-4 md:mt-0 w-full md:w-64">
                     <div className="relative">
                         <input 
@@ -78,8 +85,10 @@ export default function MenuPage() {
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="w-full pl-4 pr-10 py-2 border border-gray-300 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-green-700 focus:border-transparent transition-all"
                         />
-                        {/* Icon kính lúp đơn giản */}
-                        <svg className="w-5 h-5 absolute right-3 top-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                        {/* Icon kính lúp */}
+                        <svg className="w-5 h-5 absolute right-3 top-2.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
                     </div>
                 </div>
             </div>
@@ -96,7 +105,7 @@ export default function MenuPage() {
                     </div>
                 ) : (
                     <div className="mb-12 animate-fade-in">
-                        {/* Đổi tiêu đề động dựa trên việc có đang tìm kiếm hay không */}
+                        {/* Tiêu đề danh mục / kết quả tìm kiếm */}
                         <h2 className="text-2xl font-bold font-sans text-gray-800 mb-6 border-b pb-2">
                             {searchQuery.trim() !== "" 
                                 ? `Kết quả tìm kiếm cho: "${searchQuery}"` 
@@ -104,7 +113,7 @@ export default function MenuPage() {
                             }
                         </h2>
                         
-                        {/* Nếu tìm không thấy món nào thì báo lỗi, nếu thấy thì in ra */}
+                        {/* Nếu tìm không thấy món nào thì thông báo */}
                         {filteredMenu.length === 0 ? (
                             <div className="text-center py-10 text-gray-500">
                                 <p>Không tìm thấy món ăn nào phù hợp với từ khóa "{searchQuery}".</p>
@@ -112,14 +121,14 @@ export default function MenuPage() {
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                                 {filteredMenu.map((item) => (
-                                    <div key={item.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-all">
-                                        <div className="h-56 bg-gray-200 relative">
-                                            <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                                    <div key={item.id} className="interactive-card bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden group hover:shadow-lg transition-all">
+                                        <div className="h-56 bg-gray-200 relative overflow-hidden">
+                                            <img src={item.image} alt={item.name} className="w-full h-full object-cover card-zoom-img" />
                                         </div>
                                         <div className="p-6 flex flex-col justify-between min-h-[200px]">
                                             <div>
                                                 <div className="flex justify-between items-start mb-3">
-                                                    <h3 className="font-bold text-lg text-gray-900 leading-tight">{item.name}</h3>
+                                                    <h3 className="font-bold text-lg text-gray-900 leading-tight group-hover:text-green-800 transition-colors">{item.name}</h3>
                                                     <span className="text-green-700 font-bold whitespace-nowrap ml-4">{item.price}</span>
                                                 </div>
                                                 <p className="text-gray-500 text-sm mb-6 line-clamp-2">{item.desc}</p>
@@ -127,7 +136,7 @@ export default function MenuPage() {
                                             
                                             {isMounted && isLoggedIn && (
                                                 <button className="text-sm font-bold text-gray-900 hover:text-green-700 flex items-center transition-colors mt-auto w-fit">
-                                                    Thêm vào giỏ hàng <span className="ml-2 text-lg">→</span>
+                                                    Thêm vào giỏ hàng <span className="ml-2 text-lg inline-block transition-transform duration-200 group-hover:translate-x-1">→</span>
                                                 </button>
                                             )}
                                         </div>

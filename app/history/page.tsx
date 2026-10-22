@@ -67,7 +67,7 @@ export default function HistoryPage() {
                   {bookingStatus === "Sắp tới" ? (
                     <button 
                       onClick={() => setIsModalOpen(true)} 
-                      className="text-red-500 font-semibold hover:text-red-700 hover:underline px-3 py-1"
+                      className="interactive-btn text-red-500 font-semibold hover:text-red-700 px-3 py-1 rounded-md hover:bg-red-50"
                     >
                       Hủy bàn
                     </button>
@@ -126,7 +126,7 @@ export default function HistoryPage() {
             <div className="flex space-x-3">
               <button 
                 onClick={() => setIsModalOpen(false)}
-                className="w-1/2 py-2.5 border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+                className="interactive-btn w-1/2 py-2.5 border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50"
               >
                 Không, giữ lại
               </button>
@@ -134,7 +134,7 @@ export default function HistoryPage() {
               {/* Gọi hàm handleConfirmCancel khi bấm nút này */}
               <button 
                 onClick={handleConfirmCancel}
-                className="w-1/2 py-2.5 bg-red-600 rounded-lg text-sm font-bold text-white hover:bg-red-700 transition-colors"
+                className="interactive-btn w-1/2 py-2.5 bg-red-600 rounded-lg text-sm font-bold text-white hover:bg-red-700 shadow-sm"
               >
                 Xác nhận hủy
               </button>

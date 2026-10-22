@@ -62,21 +62,21 @@ export default function Navbar() {
   };
 
   return (
-    <nav className="flex justify-between items-center px-8 py-4 bg-white sticky top-0 z-50 gap-4 overflow-x-auto">
+    <nav className="flex justify-between items-center px-8 py-4 bg-white/95 backdrop-blur-sm sticky top-0 z-50 gap-4 overflow-x-auto border-b border-gray-100 shadow-[0_2px_10px_rgba(0,0,0,0.03)]">
       {/* Cụm Logo bên trái */}
-      <div className="flex items-center space-x-2 shrink-0">
-        <div className="w-8 h-8 rounded-full bg-green-700 flex items-center justify-center text-white font-bold">
+      <Link href="/" className="group flex items-center space-x-2 shrink-0 cursor-pointer">
+        <div className="w-8 h-8 rounded-full bg-green-700 flex items-center justify-center text-white font-bold transition-transform duration-300 group-hover:scale-105 group-hover:bg-green-800 shadow-sm">
           S
         </div>
-        <Link href="/" className="text-2xl font-bold text-green-800 tracking-tight whitespace-nowrap">SmaRes</Link>
-      </div>
+        <span className="text-2xl font-bold text-green-800 tracking-tight whitespace-nowrap transition-colors group-hover:text-green-900">SmaRes</span>
+      </Link>
 
       {/* Cụm Menu ở giữa */}
       <div className="hidden md:flex space-x-8 text-sm font-semibold text-gray-700 shrink-0">
-        <Link href="/" className="hover:text-green-700 transition-colors whitespace-nowrap">Trang chủ</Link>
-        <Link href="/menu" className="hover:text-green-700 transition-colors whitespace-nowrap">Thực đơn</Link>
-        <Link href="/about" className="hover:text-green-700 transition-colors whitespace-nowrap">Về chúng tôi</Link>
-        <Link href="/contact" className="hover:text-green-700 transition-colors whitespace-nowrap">Liên hệ</Link>
+        <Link href="/" className="nav-link-subtle hover:text-green-700 py-1 whitespace-nowrap">Trang chủ</Link>
+        <Link href="/menu" className="nav-link-subtle hover:text-green-700 py-1 whitespace-nowrap">Thực đơn</Link>
+        <Link href="/about" className="nav-link-subtle hover:text-green-700 py-1 whitespace-nowrap">Về chúng tôi</Link>
+        <Link href="/contact" className="nav-link-subtle hover:text-green-700 py-1 whitespace-nowrap">Liên hệ</Link>
       </div>
 
       {/* Cụm nút bấm bên phải */}
@@ -85,25 +85,25 @@ export default function Navbar() {
           // Hiển thị khi ĐÃ đăng nhập
           <>
             <span className="text-sm font-semibold text-gray-700 hidden sm:block whitespace-nowrap">Chào, {userName}</span>
-            <Link href="/history" className="text-sm font-semibold text-green-700 hover:underline whitespace-nowrap">
+            <Link href="/history" className="interactive-btn text-sm font-semibold text-green-700 hover:text-green-800 px-3 py-1.5 rounded-full hover:bg-green-50 whitespace-nowrap">
               Lịch sử
             </Link>
             <button 
               onClick={handleLogout} 
-              className="text-sm font-semibold text-red-500 hover:text-red-700 transition-colors px-4 py-2 border border-red-200 rounded-full bg-red-50 whitespace-nowrap"
+              className="interactive-btn text-sm font-semibold text-red-500 hover:text-red-700 px-4 py-2 border border-red-200 rounded-full bg-red-50 hover:bg-red-100 whitespace-nowrap"
             >
               Đăng xuất
             </button>
           </>
         ) : (
           // Hiển thị khi CHƯA đăng nhập
-          <Link href="/login" className="text-sm font-semibold px-4 py-2 border border-gray-300 rounded-full hover:bg-gray-50 transition-colors whitespace-nowrap">
+          <Link href="/login" className="interactive-btn text-sm font-semibold px-4 py-2 border border-gray-300 rounded-full hover:border-gray-400 hover:bg-gray-50 whitespace-nowrap">
             Đăng nhập
           </Link>
         )}
 
         {/* Nút Đặt bàn (luôn hiển thị) */}
-        <Link href="/booking" className="bg-green-800 text-white text-sm font-semibold px-6 py-2 rounded-full hover:bg-green-900 transition-colors whitespace-nowrap">
+        <Link href="/booking" className="interactive-btn bg-green-800 text-white text-sm font-semibold px-6 py-2 rounded-full hover:bg-green-900 shadow-sm whitespace-nowrap">
           Đặt bàn
         </Link>
       </div>
