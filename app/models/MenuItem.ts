@@ -8,6 +8,7 @@ export interface IMenuItem {
   imageUrl: string;
   category: 'Khai vị' | 'Món chính' | 'Đồ uống' | 'Tráng miệng';
   isAvailable: boolean;
+  is_available?: boolean;
   isPreOrderOnly?: boolean;
   preparationNote?: string;
   createdAt?: Date;
@@ -48,6 +49,10 @@ const MenuItemSchema = new Schema<IMenuItem>(
     isAvailable: {
       type: Boolean,
       required: [true, 'Vui lòng thiết lập trạng thái món ăn'],
+      default: true,
+    },
+    is_available: {
+      type: Boolean,
       default: true,
     },
     isPreOrderOnly: {

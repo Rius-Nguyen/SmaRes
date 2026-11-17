@@ -18,10 +18,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedInput = email.toLowerCase().trim();
+    const targetEmail = normalizedInput === 'admin' ? 'admin@smares.com' : normalizedInput;
 
-    // 2. Tìm người dùng theo email
-    const user = await User.findOne({ email: normalizedEmail });
+    // 2. Tìm người dùng theo email (hỗ trợ nhập 'admin' hoặc email đầy đủ)
+    let user = await User.findOne({ email: targetEmail });
+    if (!user && normalizedInput !== targetEmail) {
+      user = await User.findOne({ email: normalizedInput });
+    }
     if (!user) {
       return NextResponse.json(
         { success: false, message: 'Email hoặc mật khẩu không chính xác.' },
@@ -50,8 +54,8 @@ export async function POST(request: Request) {
       { expiresIn: '1d' }
     );
 
-    // 5. Trả về token và thông tin người dùng
-    return NextResponse.json(
+    // 5. Trả về token và thông tin người dùng kèm HTTP Cookie
+    const response = NextResponse.json(
       {
         success: true,
         message: 'Đăng nhập thành công!',
@@ -66,6 +70,18 @@ export async function POST(request: Request) {
       },
       { status: 200 }
     );
+
+    // Lưu token vào cookie để các trang Staff và API backend đều nhận diện được
+    response.cookies.set({
+      name: 'token',
+      value: token,
+      httpOnly: false,
+      path: '/',
+      maxAge: 86400,
+      sameSite: 'lax',
+    });
+
+    return response;
   } catch (error: unknown) {
     console.error('Lỗi khi đăng nhập:', error);
     const errorMessage = error instanceof Error ? error.message : 'Lỗi hệ thống server.';
