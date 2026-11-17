@@ -40,24 +40,53 @@ export default function StaffOrdersPage() {
       setLoading(true);
       setError('');
       
-      const response = await fetch('http://localhost:5000/api/orders/staff', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include', // Đảm bảo gửi kèm cookie JWT token
-      });
+      let data: any = null;
 
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        setOrders(data.data || []);
-      } else {
-        setError(data.message || 'Không thể lấy danh sách đơn hàng');
+      // 1. Thử gọi máy chủ Backend Express (cổng 5000)
+      try {
+        const response = await fetch('http://localhost:5000/api/orders/staff', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include', // Đảm bảo gửi kèm cookie JWT token
+        });
+        if (response.ok) {
+          data = await response.json();
+        }
+      } catch (backendErr) {
+        console.warn('Backend cổng 5000 chưa kích hoạt, tự động chuyển tiếp sang API Next.js /api/orders...', backendErr);
       }
-    } catch (err) {
+
+      // 2. Dự phòng: Nếu backend 5000 chưa bật, dùng API nội bộ Next.js /api/orders
+      if (!data) {
+        const nextApiResponse = await fetch('/api/orders');
+        if (nextApiResponse.ok) {
+          data = await nextApiResponse.json();
+        }
+      }
+
+      if (data && (data.success || Array.isArray(data))) {
+        const rawOrders = data.data || data.orders || (Array.isArray(data) ? data : []);
+        // Chuẩn hóa dữ liệu nếu từ nguồn Next.js memoryOrders
+        const normalizedOrders = rawOrders.map((ord: any) => ({
+          _id: ord._id || 'ORD' + Math.random().toString().slice(2, 8),
+          userId: ord.userId || null,
+          items: ord.items?.map((it: any) => ({
+            foodId: it.foodId || { _id: 'f1', name: it.name || 'Món ăn', price: it.price || 0 },
+            quantity: it.quantity || 1,
+          })) || [],
+          totalPrice: ord.totalPrice || ord.totalAmount || 0,
+          status: ord.status || 'Pending',
+          createdAt: ord.createdAt || new Date().toISOString(),
+        }));
+        setOrders(normalizedOrders);
+      } else {
+        setError(data?.message || 'Không thể lấy danh sách đơn hàng');
+      }
+    } catch (err: any) {
       console.error('Lỗi kết nối API:', err);
-      setError('Lỗi kết nối đến máy chủ Backend!');
+      setError('Lỗi kết nối đến máy chủ lấy dữ liệu đơn hàng!');
     } finally {
       setLoading(false);
     }

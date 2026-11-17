@@ -2,7 +2,15 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
-// 1. Cấu trúc món ăn trong giỏ hàng
+// 1. Cấu trúc tùy biến món (TK-160)
+export interface ItemCustomizations {
+  spicy_level?: 'NONE' | 'MILD' | 'MEDIUM' | 'HOT';
+  ice_level?: '0%' | '50%' | '100%';
+  sweetness_level?: '0%' | '50%' | '100%';
+  allergy_notes?: string;
+}
+
+// Cấu trúc món ăn trong giỏ hàng
 export interface CartItem {
   _id: string;
   name: string;
@@ -11,6 +19,7 @@ export interface CartItem {
   category: string;
   isPreOrderOnly?: boolean;
   quantity: number;
+  customizations?: ItemCustomizations;
 }
 
 // Cấu trúc thông tin đặt bàn trong luồng workflow
@@ -123,10 +132,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Thêm món vào giỏ
+  // Thêm món vào giỏ (hỗ trợ phân biệt tùy biến món - TK-160)
   const addToCart = (item: Omit<CartItem, 'quantity'>, quantity: number = 1) => {
     setCart((prevCart) => {
-      const existingIndex = prevCart.findIndex((i) => i._id === item._id);
+      const existingIndex = prevCart.findIndex(
+        (i) =>
+          i._id === item._id &&
+          JSON.stringify(i.customizations || {}) === JSON.stringify(item.customizations || {})
+      );
       if (existingIndex > -1) {
         const newCart = [...prevCart];
         newCart[existingIndex] = {

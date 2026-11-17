@@ -75,4 +75,44 @@ router.put('/:id', verifyToken, isAdmin, async (req, res) => {
   }
 });
 
+// @route   PATCH /api/menu/:id/toggle-availability
+// @desc    Nút công tắc 1 chạm Bật/Tắt 'Hết món nhanh' (TK-163)
+router.patch('/:id/toggle-availability', async (req, res) => {
+  try {
+    const foodId = req.params.id;
+    const food = await Food.findById(foodId);
+
+    if (!food) {
+      return res.status(404).json({
+        success: false,
+        message: `Không tìm thấy món ăn với ID: ${foodId}`
+      });
+    }
+
+    const newStatus = typeof req.body.is_available === 'boolean'
+      ? req.body.is_available
+      : typeof req.body.isAvailable === 'boolean'
+      ? req.body.isAvailable
+      : !food.isAvailable;
+
+    food.isAvailable = newStatus;
+    if (food.is_available !== undefined) {
+      food.is_available = newStatus;
+    }
+    await food.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `Đã ${newStatus ? 'BẬT (Còn món)' : 'TẮT (Hết món)'} cho: ${food.name}`,
+      food
+    });
+  } catch (error) {
+    console.error('Lỗi PATCH /api/menu/:id/toggle-availability:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi server khi bật/tắt trạng thái món ăn'
+    });
+  }
+});
+
 module.exports = router;

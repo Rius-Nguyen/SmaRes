@@ -11,7 +11,7 @@ const { verifyToken } = require('../middleware/auth'); // Import middleware bả
 router.post('/', async (req, res) => {
   try {
     // 1. Lấy thông tin người dùng, thông tin bàn và danh sách món từ req.body
-    const { userId, tableId, items } = req.body; 
+    const { userId, tableId, tableNumber, items, notes } = req.body; 
 
     // Kiểm tra tính hợp lệ của giỏ hàng
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -38,7 +38,9 @@ router.post('/', async (req, res) => {
       
       orderItems.push({
         foodId: item.foodId,
-        quantity: item.quantity
+        quantity: item.quantity,
+        price: food.price,
+        customizations: item.customizations || { spicy_level: 'NONE', allergy_notes: '' }
       });
     }
 
@@ -46,9 +48,11 @@ router.post('/', async (req, res) => {
     const newOrder = new Order({
       userId: userId || null,
       tableId: tableId || null,
+      tableNumber: tableNumber || null,
       items: orderItems,
       totalPrice: calculatedTotalPrice,
-      status: 'Pending'
+      status: 'Pending',
+      notes: notes || ''
     });
 
     // 4. Lưu trực tiếp vào cơ sở dữ liệu MongoDB

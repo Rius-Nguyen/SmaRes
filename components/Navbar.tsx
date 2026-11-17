@@ -9,6 +9,7 @@ import { useCart } from '@/app/context/CartContext';
 export default function Navbar() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userName, setUserName] = useState('');
+  const [userRole, setUserRole] = useState('');
   const router = useRouter();
   const { totalItems, hasActiveBooking } = useCart();
 
@@ -22,14 +23,17 @@ export default function Navbar() {
         if (token && storedUser) {
           const userData = JSON.parse(storedUser);
           setUserName(userData.name || 'Người dùng');
+          setUserRole(userData.role || '');
           setIsLoggedIn(true);
         } else {
           setIsLoggedIn(false);
           setUserName('');
+          setUserRole('');
         }
       } catch {
         setIsLoggedIn(false);
         setUserName('');
+        setUserRole('');
       }
     };
 
@@ -58,6 +62,7 @@ export default function Navbar() {
     localStorage.removeItem('user');
     setIsLoggedIn(false);
     setUserName('');
+    setUserRole('');
 
     // Phát sự kiện thông báo trạng thái auth đã thay đổi
     window.dispatchEvent(new Event('auth-change'));
@@ -87,7 +92,33 @@ export default function Navbar() {
         {isLoggedIn ? (
           // Hiển thị khi ĐÃ đăng nhập
           <>
-            <span className="text-sm md:text-base font-semibold text-gray-700 hidden sm:block whitespace-nowrap">Chào, {userName}</span>
+            <span className="text-sm md:text-base font-semibold text-gray-700 hidden sm:flex items-center whitespace-nowrap">
+              Chào, {userName}
+              {userRole === 'admin' && (
+                <span className="ml-2 px-2 py-0.5 text-[11px] font-bold bg-amber-100 text-amber-800 rounded-full border border-amber-300">Admin</span>
+              )}
+              {userRole === 'staff' && (
+                <span className="ml-2 px-2 py-0.5 text-[11px] font-bold bg-emerald-100 text-emerald-800 rounded-full border border-emerald-300">Staff</span>
+              )}
+            </span>
+            {(userRole === 'admin' || userRole === 'staff') && (
+              <>
+                <Link 
+                  href="/kds" 
+                  className="interactive-btn text-xs sm:text-sm font-semibold bg-amber-500 text-stone-950 hover:bg-amber-600 px-3.5 py-1.5 rounded-full shadow-sm whitespace-nowrap flex items-center gap-1.5"
+                  title="Màn hình Bếp KDS (Kitchen Display System)"
+                >
+                  <span>⚡</span> Bếp KDS
+                </Link>
+                <Link 
+                  href="/staff/orders" 
+                  className="interactive-btn text-xs sm:text-sm font-semibold bg-emerald-800 text-white hover:bg-emerald-900 px-3.5 py-1.5 rounded-full shadow-sm whitespace-nowrap flex items-center gap-1.5"
+                  title="Trang quản lý đơn hàng dành cho Nhân viên"
+                >
+                  <span>📋</span> Đơn Staff
+                </Link>
+              </>
+            )}
             <Link href="/history" className="interactive-btn text-sm md:text-base font-semibold text-green-700 hover:text-green-800 px-3.5 py-1.5 rounded-full hover:bg-green-50 whitespace-nowrap">
               Lịch sử
             </Link>
