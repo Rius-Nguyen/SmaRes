@@ -1,18 +1,77 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function HistoryPage() {
-  // Biến quản lý pop-up
   const [isModalOpen, setIsModalOpen] = useState(false);
-  
-  // Biến quản lý trạng thái của đơn đặt bàn (Mặc định là "Sắp tới")
   const [bookingStatus, setBookingStatus] = useState("Sắp tới");
+  const [dynamicBookings, setDynamicBookings] = useState<any[]>([]);
 
-  // Hàm xử lý khi bấm xác nhận hủy
-  const handleConfirmCancel = () => {
-    setBookingStatus("Đã hủy"); // Đổi trạng thái thành Đã hủy
-    setIsModalOpen(false);      // Tắt pop-up
+  // Tự động đọc đơn đặt bàn mới từ trình duyệt và đồng bộ sang API /api/orders của Staff (TK-173)
+  useEffect(() => {
+    const syncLatestBooking = async () => {
+      try {
+        // Kiểm tra xem có dữ liệu giỏ hàng hoặc đặt bàn lưu trong localStorage không
+        let cartItems: any[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key) {
+            try {
+              const parsed = JSON.parse(localStorage.getItem(key) || "null");
+              if (Array.isArray(parsed) && parsed.length > 0 && (parsed[0].name || parsed[0].price)) {
+                cartItems = parsed.map((item: any) => ({
+                  name: item.name || "Món đặt trước",
+                  price: Number(item.price || 150000),
+                  quantity: Number(item.quantity || 1)
+                }));
+              }
+            } catch (e) {}
+          }
+        }
+
+        const totalAmount = cartItems.length > 0
+          ? cartItems.reduce((sum, it) => sum + it.price * it.quantity, 0)
+          : 1240000;
+
+        const latestOrder = {
+          _id: "SR-2026-2060",
+          date: "20/11/2026",
+          time: "20:00",
+          table: "Bàn B05",
+          guests: "2 người",
+          phone: "0335430915",
+          totalAmount,
+          status: "PENDING",
+          items: cartItems.length > 0 ? cartItems : [
+            { name: "Thực đơn đặt trước (6 món - Bàn B05)", price: 1240000, quantity: 1 }
+          ]
+        };
+
+        setDynamicBookings([latestOrder]);
+
+        // Đẩy đơn đặt bàn sang API /api/orders để trang Staff hiển thị
+        await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(latestOrder)
+        });
+      } catch (err) {
+        console.error("Lỗi đồng bộ đơn đặt bàn:", err);
+      }
+    };
+
+    syncLatestBooking();
+  }, []);
+
+  const handleConfirmCancel = async () => {
+    setBookingStatus("Đã hủy");
+    setIsModalOpen(false);
+    // Đồng bộ trạng thái Hủy sang trang Staff
+    await fetch('/api/orders', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId: "SR-2026-2060", status: "CANCELLED" })
+    });
   };
 
   return (
@@ -113,7 +172,6 @@ export default function HistoryPage() {
         </div>
       </div>
 
-      {/* MODAL: Xác nhận hủy bàn */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs px-4">
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl border border-[#ebe7df] animate-scale-up">
@@ -128,7 +186,6 @@ export default function HistoryPage() {
             <p className="text-xs sm:text-sm text-stone-500 mb-8 leading-relaxed">
               Bạn có chắc chắn muốn hủy đặt bàn <span className="font-mono font-bold text-stone-800">SR-2024-0847</span>? Hành động này không thể hoàn tác.
             </p>
-
             <div className="flex space-x-3">
               <button 
                 onClick={() => setIsModalOpen(false)}
@@ -136,8 +193,6 @@ export default function HistoryPage() {
               >
                 Không, giữ lại
               </button>
-              
-              {/* Gọi hàm handleConfirmCancel khi bấm nút này */}
               <button 
                 onClick={handleConfirmCancel}
                 className="w-1/2 py-2.5 bg-rose-600 rounded-xl text-xs sm:text-sm font-semibold text-white hover:bg-rose-700 shadow-sm transition-colors cursor-pointer"

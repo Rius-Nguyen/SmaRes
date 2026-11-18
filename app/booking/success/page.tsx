@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useCart } from '@/app/context/CartContext';
 
@@ -12,6 +13,51 @@ export default function BookingSuccessPage() {
   const time = bookingInfo?.time || '19:00';
   const date = bookingInfo?.date || '2026-10-25';
   const name = bookingInfo?.name || 'Quý khách';
+
+  const [qrToken, setQrToken] = useState<string>('');
+  const [dynamicQrUrl, setDynamicQrUrl] = useState<string>('/foods/QR.jpg');
+
+  useEffect(() => {
+    // 1. Thuật toán tạo Token định danh phiên và mã QR động gắn liền với Table ID (TK-141)
+    const timeHash = Date.now().toString(36).toUpperCase();
+    const generatedToken = `TK-${tableNumber}-${bookingCode.slice(-4)}-${timeHash}`;
+    setQrToken(generatedToken);
+
+    // Đường dẫn khi khách quét mã QR tại bàn (gồm Table ID, Token và Mã đặt chỗ)
+    const tableOrderUrl = `${window.location.origin}/menu?tableId=${tableNumber}&token=${generatedToken}&code=${bookingCode}`;
+    const qrApiImage = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(tableOrderUrl)}`;
+    setDynamicQrUrl(qrApiImage);
+
+    // 2. Gọi API /api/qr (nếu đã tạo ở bước trước) để lưu phiên QR trên Server
+    fetch(`/api/qr?tableId=${tableNumber}`)
+      .then((res) => res.json())
+      .then((resData) => {
+        if (resData?.data?.token) {
+          setQrToken(resData.data.token);
+          setDynamicQrUrl(resData.data.qrImageUrl);
+        }
+      })
+      .catch(() => {});
+
+    // 3. Tự động đẩy đơn đặt bàn và món đặt trước sang API /api/orders của Staff (TK-173)
+    if (Array.isArray(cart) && cart.length > 0) {
+      fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          _id: bookingCode,
+          phone: bookingInfo?.phone || '0335430915',
+          totalAmount: totalPrice,
+          status: 'PENDING',
+          items: cart.map((item: any) => ({
+            name: item.name,
+            price: Number(item.price || 0),
+            quantity: Number(item.quantity || 1),
+          })),
+        }),
+      }).catch(() => {});
+    }
+  }, [bookingCode, tableNumber, cart, totalPrice, bookingInfo]);
 
   return (
     <main className="flex-1 flex items-center justify-center bg-[#faf8f5] text-[#1c1917] py-16 px-4">
