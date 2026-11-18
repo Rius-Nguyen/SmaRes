@@ -90,25 +90,33 @@ export default function BookingMenuPage() {
   // NẾU CHƯA CÓ THÔNG TIN ĐẶT BÀN VÀ CHƯA CHỌN BÀN Ở BƯỚC 1 & 2
   if (isLoaded && !hasActiveBooking) {
     return (
-      <main className="flex-1 bg-gray-50 flex flex-col min-h-screen">
+      <main className="flex-1 bg-[#faf8f5] text-[#1c1917] flex flex-col min-h-screen">
         <BookingStepper currentStep={3} />
         <div className="max-w-2xl mx-auto my-auto py-16 px-4 text-center">
-          <div className="bg-white rounded-3xl p-8 md:p-12 shadow-sm border border-gray-200">
-            <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl border border-amber-200">
-              🔒
+          <div className="bg-white rounded-3xl p-8 md:p-12 shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] border border-[#ebe7df]">
+            <div className="w-16 h-16 bg-[#fffbeb] rounded-full flex items-center justify-center mx-auto mb-6 text-[#d97706] border border-[#fde68a]">
+              <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              </svg>
             </div>
-            <h1 className="text-2xl md:text-3xl font-bold font-sans text-gray-900 mb-3">
-              Yêu cầu hoàn tất Bước 1 & 2
+            <h1 className="text-2xl md:text-3xl font-serif font-bold text-[#1c1917] mb-3">
+              Yêu cầu hoàn tất Bước 1 &amp; 2
             </h1>
-            <p className="text-gray-600 text-sm leading-relaxed mb-6">
+            <p className="text-stone-600 text-sm leading-relaxed mb-6">
               Để bảo đảm món ăn được bếp trưởng chuẩn bị tươi ngon nhất theo đúng giờ đến, bạn cần hoàn thành
               <strong> Bước 1 (Thông tin đặt bàn)</strong> và <strong>Bước 2 (Chọn vị trí bàn trên sơ đồ)</strong> trước khi chọn thực đơn.
             </p>
 
-            <div className="bg-amber-50/70 p-4 rounded-xl border border-amber-200 text-left mb-8">
-              <p className="text-xs font-bold text-amber-900 mb-1">⭐ ĐẶC QUYỀN KHI ĐẶT BÀN TRƯỚC:</p>
-              <ul className="text-xs text-amber-800 space-y-1 list-disc pl-4">
-                <li>Mở khóa danh mục <strong>Món Ăn Đặc Biệt</strong> (Phở Wagyu A5, Vịt quay lu đất,...)</li>
+            <div className="bg-[#fffbeb] p-4 rounded-xl border border-[#fde68a] text-left mb-8">
+              <p className="text-xs font-bold text-[#92400e] mb-1 flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5 text-[#d97706]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                </svg>
+                <span>ĐẶC QUYỀN KHI ĐẶT BÀN TRƯỚC:</span>
+              </p>
+              <ul className="text-xs text-[#92400e] space-y-1 list-disc pl-4">
+                <li>Mở khóa danh mục <strong>Món Ăn Đặc Quyền</strong> (Phở Wagyu A5, Vịt quay mật ong rừng,...)</li>
                 <li>Không phải chờ đợi chế biến khi đến nhà hàng</li>
                 <li>Bước chọn món là <em>tùy chọn (không bắt buộc)</em> — bạn có thể chọn hoặc bỏ qua bất kỳ lúc nào!</li>
               </ul>
@@ -116,9 +124,9 @@ export default function BookingMenuPage() {
 
             <Link
               href="/booking"
-              className="interactive-btn inline-flex items-center gap-2 bg-green-800 text-white font-bold px-8 py-3.5 rounded-xl hover:bg-green-900 shadow-md transition-all text-sm"
+              className="inline-flex items-center gap-2 bg-[#14532d] hover:bg-[#15803d] text-white font-semibold px-8 py-3.5 rounded-xl shadow-[0_8px_20px_-4px_rgba(20,83,45,0.4)] transition-all text-sm"
             >
-              <span>← Bắt đầu đặt bàn & chọn bàn ngay</span>
+              <span>← Bắt đầu đặt bàn &amp; chọn bàn ngay</span>
             </Link>
           </div>
         </div>
@@ -127,26 +135,26 @@ export default function BookingMenuPage() {
   }
 
   return (
-    <main className="flex-1 bg-gray-50 flex flex-col min-h-screen pb-28">
+    <main className="flex-1 bg-[#faf8f5] text-[#1c1917] flex flex-col min-h-screen pb-28">
       {/* Workflow Stepper: Bước 3 */}
       <BookingStepper currentStep={3} />
 
       {/* Banner tóm tắt bàn đã chọn */}
-      <div className="bg-white border-b border-gray-200 shadow-sm py-4 px-4 sm:px-6 sticky top-16 z-30">
+      <div className="bg-white/95 backdrop-blur-md border-b border-[#ebe7df] shadow-xs py-4 px-4 sm:px-6 sticky top-16 z-30">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-bold uppercase tracking-wider bg-green-100 text-green-800 px-3.5 py-1.5 rounded-lg">
+            <div className="flex items-center gap-2 flex-wrap text-xs sm:text-sm">
+              <span className="font-semibold uppercase tracking-wider bg-[#f0fdf4] text-[#14532d] px-3 py-1 rounded-lg border border-[#bbf7d0]">
                 Đã giữ chỗ: Bàn {bookingInfo?.tableNumber} ({bookingInfo?.tableType})
               </span>
-              <span className="text-sm text-gray-700 font-semibold">
+              <span className="text-stone-700 font-medium">
                 • {bookingInfo?.time}, ngày {bookingInfo?.date}
               </span>
-              <span className="text-sm text-gray-700 font-semibold">
+              <span className="text-stone-700 font-medium">
                 • Khách: {bookingInfo?.name} ({bookingInfo?.guests})
               </span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-bold font-sans text-gray-900 mt-2">
+            <h1 className="text-2xl md:text-3xl font-serif font-bold text-[#14532d] mt-2">
               3. Chọn Món Ăn Vào Giỏ Hàng (Tùy chọn)
             </h1>
           </div>
@@ -155,36 +163,46 @@ export default function BookingMenuPage() {
           <div className="flex items-center gap-3 w-full sm:w-auto">
             <button
               onClick={handleProceedToConfirm}
-              className="interactive-btn w-full sm:w-auto text-sm sm:text-base font-bold bg-green-800 hover:bg-green-900 text-white px-6 py-3 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 whitespace-nowrap"
+              className="w-full sm:w-auto text-xs sm:text-sm font-semibold bg-[#14532d] hover:bg-[#15803d] text-white px-6 py-3 rounded-xl shadow-[0_8px_20px_-4px_rgba(20,83,45,0.4)] transition-all flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer"
             >
               <span>Xác nhận thực đơn ({totalItems} món)</span>
-              <span>→</span>
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M5 12h14"></path>
+                <path d="m12 5 7 7-7 7"></path>
+              </svg>
             </button>
           </div>
         </div>
       </div>
 
-      {/* THÔNG BÁO GHI CHÚ QUAN TRỌNG: CHỮ TO VÀ NỔI BẬT ĐỂ KHÁCH HÀNG BIẾT BƯỚC NÀY LÀ TÙY CHỌN */}
+      {/* THÔNG BÁO GHI CHÚ QUAN TRỌNG */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
-        <div className="bg-gradient-to-r from-amber-100/90 via-yellow-50 to-emerald-50 rounded-3xl p-6 md:p-8 border-2 border-amber-300 shadow-md">
+        <div className="bg-gradient-to-r from-[#fffbeb] via-[#fef3c7]/60 to-[#f0fdf4] rounded-3xl p-6 md:p-8 border border-[#fde68a] shadow-xs">
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
             <div className="flex items-start gap-4">
-              <div className="w-16 h-16 rounded-2xl bg-amber-500 text-white flex items-center justify-center text-3xl shrink-0 shadow-md">
-                👑
+              <div className="w-14 h-14 rounded-2xl bg-[#d97706] text-white flex items-center justify-center text-2xl shrink-0 shadow-sm border border-[#fbbf24]/40">
+                <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14"></path>
+                </svg>
               </div>
               <div className="space-y-2">
-                <h2 className="text-2xl md:text-3xl font-bold text-amber-950 tracking-normal font-sans">
+                <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#92400e] tracking-tight">
                   Đã mở khóa các Món Ăn Đặc Quyền dành riêng cho khách Đặt bàn trước!
                 </h2>
-                <p className="text-base md:text-lg text-gray-800 leading-relaxed font-normal">
-                  Những món ăn chế biến công phu (Phở Wagyu A5 dát vàng, Vịt quay lu đất, Cá chẽm hoàng gia,...) chỉ có thể gọi khi đặt trước.
+                <p className="text-sm sm:text-base text-stone-700 leading-relaxed font-normal">
+                  Những món ăn chế biến công phu (Phở Wagyu A5, Vịt quay mật ong rừng,...) chỉ có thể gọi khi đặt trước.
                 </p>
-                {/* DÒNG NHẤN MẠNH BƯỚC ĐẶT MÓN LÀ TÙY CHỌN CHỮ TO NỔI BẬT */}
-                <div className="bg-white/95 rounded-2xl p-4 border border-emerald-300 shadow-sm mt-3">
+                <div className="bg-white/95 rounded-2xl p-4 border border-[#bbf7d0] shadow-xs mt-3">
                   <div className="flex items-start gap-3">
-                    <span className="text-2xl sm:text-3xl shrink-0 mt-0.5">💡</span>
-                    <div className="text-base md:text-lg text-emerald-950 leading-relaxed font-sans">
-                      <span className="font-bold text-emerald-800 uppercase tracking-wide mr-2">
+                    <span className="text-[#15803d] shrink-0 mt-0.5">
+                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="16" x2="12" y2="12"></line>
+                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                      </svg>
+                    </span>
+                    <div className="text-xs sm:text-sm text-stone-800 leading-relaxed">
+                      <span className="font-bold text-[#14532d] uppercase tracking-wide mr-2">
                         Lưu ý quan trọng:
                       </span>
                       <span>
@@ -198,9 +216,12 @@ export default function BookingMenuPage() {
 
             <button
               onClick={() => setActiveTab('Món đặc biệt')}
-              className="interactive-btn text-base font-bold text-amber-900 bg-amber-200 hover:bg-amber-300 px-6 py-3.5 rounded-xl whitespace-nowrap border border-amber-400 shrink-0 shadow-sm transition-all"
+              className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-[#92400e] bg-[#fef3c7] hover:bg-[#fde68a] px-5 py-3 rounded-xl whitespace-nowrap border border-[#fcd34d] shrink-0 shadow-xs transition-all cursor-pointer"
             >
-              Xem ngay các món đặc biệt ⭐
+              <span>Xem ngay món đặc biệt</span>
+              <svg className="w-4 h-4 text-[#d97706]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+              </svg>
             </button>
           </div>
         </div>

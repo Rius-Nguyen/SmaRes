@@ -1,15 +1,17 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #faf8f5;
+  --foreground: #1c1917;
+  --color-primary-800: #14532d;
+  --color-accent-600: #d97706;
 }
 
 @theme inline {
+  --font-serif: var(--font-playfair), "Playfair Display", Georgia, serif;
+  --font-sans: var(--font-be-vietnam-pro), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-be-vietnam-pro), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 html {
@@ -21,7 +23,15 @@ html {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-be-vietnam-pro), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-be-vietnam-pro), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.font-serif {
+  font-family: var(--font-playfair), "Playfair Display", Georgia, serif;
+}
+
+.font-sans {
+  font-family: var(--font-be-vietnam-pro), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 /* Con trỏ chuột dạng bàn tay toàn cục cho các phần tử tương tác */
@@ -54,12 +64,12 @@ input:disabled,
 }
 
 .interactive-btn:hover:not(:disabled) {
-  transform: translateY(-1.5px) scale(1.025);
-  box-shadow: 0 6px 18px -3px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1.5px) scale(1.02);
+  box-shadow: 0 8px 20px -4px rgba(20, 83, 45, 0.18);
 }
 
 .interactive-btn:active:not(:disabled) {
-  transform: translateY(0) scale(0.975);
+  transform: translateY(0) scale(0.98);
 }
 
 /* Hiệu ứng thẻ card món ăn nổi nhẹ tinh tế (Subtle Interactive Card) */
@@ -72,7 +82,7 @@ input:disabled,
 
 .interactive-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 14px 28px -6px rgba(0, 0, 0, 0.09), 0 4px 10px -2px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 16px 32px -6px rgba(28, 25, 23, 0.08), 0 4px 12px -2px rgba(28, 25, 23, 0.04);
 }
 
 /* Ảnh món ăn zoom mượt mà khi rê chuột */
@@ -83,7 +93,7 @@ input:disabled,
 
 .interactive-card:hover .card-zoom-img,
 .group:hover .card-zoom-img {
-  transform: scale(1.045);
+  transform: scale(1.05);
 }
 
 /* Hiệu ứng đường gạch chân trượt thanh lịch cho Menu điều hướng */
@@ -99,7 +109,7 @@ input:disabled,
   left: 50%;
   width: 0%;
   height: 2px;
-  background-color: #15803d; /* green-700 */
+  background-color: #14532d; /* Heritage Jade */
   border-radius: 9999px;
   transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1), left 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -114,6 +124,32 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
   outline: none;
-  border-color: #15803d !important;
-  box-shadow: 0 0 0 3px rgba(21, 128, 61, 0.15) !important;
-}
+  border-color: #14532d !important;
+  box-shadow: 0 0 0 3px rgba(20, 83, 45, 0.15) !important;
+}
+
+/* Animation keyframes */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleUp {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-fadeIn { animation: fadeIn 0.25s ease-out forwards; }
+.animate-slideUp { animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-slideDown { animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-scaleUp { animation: scaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards; }

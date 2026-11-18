@@ -1,9 +1,16 @@
 import type { Metadata } from "next";
-import { Be_Vietnam_Pro } from "next/font/google";
+import { Be_Vietnam_Pro, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { CartProvider } from "@/app/context/CartContext";
+
+const playfairDisplay = Playfair_Display({
+  weight: ["400", "500", "600", "700", "800"],
+  subsets: ["latin", "vietnamese"],
+  variable: "--font-playfair",
+  display: "swap",
+});
 
 const beVietnamPro = Be_Vietnam_Pro({
   weight: ["300", "400", "500", "600", "700", "800"],
@@ -13,8 +20,8 @@ const beVietnamPro = Be_Vietnam_Pro({
 });
 
 export const metadata: Metadata = {
-  title: "SmaRes - Đặt bàn thông minh",
-  description: "Nền tảng quản lý nhà hàng",
+  title: "SmaRes - Nhà Hàng Ẩm Thực Việt Nam Đương Đại",
+  description: "Trải nghiệm ẩm thực tinh tế, đặt bàn và xem thực đơn thông minh tại SmaRes Gastronomy.",
 };
 
 export default function RootLayout({
@@ -23,11 +30,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="vi" suppressHydrationWarning>
-      <body suppressHydrationWarning className={`${beVietnamPro.variable} ${beVietnamPro.className} min-h-full flex flex-col antialiased bg-white text-gray-900`}>
+    <html lang="vi" suppressHydrationWarning className={`${playfairDisplay.variable} ${beVietnamPro.variable}`}>
+      <body suppressHydrationWarning className="min-h-full flex flex-col antialiased bg-[#faf8f5] text-[#1c1917] font-sans selection:bg-[#dcfce7] selection:text-[#14532d]">
         <CartProvider>
           <Navbar />
-          {children}
+          <div className="flex-1">
+            {children}
+          </div>
           <Footer />
         </CartProvider>
       </body>

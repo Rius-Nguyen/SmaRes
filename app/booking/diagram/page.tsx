@@ -194,18 +194,22 @@ export default function BookingDiagramPage() {
   };
 
   return (
-    <main className="flex-1 bg-gray-100 flex flex-col min-h-screen pb-16">
-      {/* Header tối màu */}
-      <div className="bg-zinc-900 py-12 text-center px-4">
-        <span className="text-sm uppercase tracking-widest text-green-400 font-bold mb-2 inline-block">
-          Sơ đồ vị trí trực quan
-        </span>
-        <h1 className="text-3xl md:text-5xl font-sans font-bold text-white mb-2">
-          2. Chọn Vị Trí Bàn Trên Sơ Đồ
-        </h1>
-        <p className="text-gray-300 text-base md:text-lg max-w-2xl mx-auto">
-          Xem hình ảnh thực tế, tầm nhìn (view) không gian và chọn vị trí lý tưởng nhất cho bữa tiệc của bạn
-        </p>
+    <main className="flex-1 bg-[#faf8f5] text-[#1c1917] flex flex-col min-h-screen pb-20">
+      {/* Header */}
+      <div className="bg-[#0a1f14] py-14 text-center px-4 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-[#fbbf24]/5 rounded-full blur-3xl"></div>
+        <div className="relative z-10 max-w-3xl mx-auto">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#14532d]/70 border border-[#fbbf24]/40 text-[#fde68a] text-xs font-semibold uppercase tracking-widest mb-3 backdrop-blur-md">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#fbbf24]"></span>
+            Sơ đồ vị trí trực quan
+          </div>
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-serif font-bold text-white mb-3 tracking-tight">
+            2. Chọn Vị Trí Bàn Trên Sơ Đồ
+          </h1>
+          <p className="text-stone-300 text-sm md:text-base max-w-xl mx-auto font-light leading-relaxed">
+            Xem hình ảnh thực tế, tầm nhìn không gian và chọn vị trí lý tưởng nhất cho bữa tiệc của bạn.
+          </p>
+        </div>
       </div>
 
       {/* Workflow Stepper: Bước 2 */}
@@ -214,36 +218,39 @@ export default function BookingDiagramPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
         
         {/* Cột Trái: Sơ đồ bàn ăn (7/12 cột) */}
-        <div className="lg:col-span-7 bg-white rounded-2xl shadow-sm border border-gray-200 p-6 md:p-8">
+        <div className="lg:col-span-7 bg-white rounded-2xl shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] border border-[#ebe7df] p-6 md:p-8">
           {/* Chú thích trạng thái */}
-          <div className="flex flex-wrap items-center justify-between border-b pb-6 mb-8 gap-4">
+          <div className="flex flex-wrap items-center justify-between border-b border-[#ebe7df] pb-6 mb-8 gap-4">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">Không gian nhà hàng SmaRes</h2>
-              <p className="text-sm text-gray-600 mt-1">Nhấp vào bàn màu xanh để xem ảnh thực tế & view bàn</p>
+              <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#14532d]">Không gian nhà hàng SmaRes</h2>
+              <p className="text-xs sm:text-sm text-stone-500 mt-1">Nhấp vào bàn màu xanh để xem ảnh thực tế &amp; view bàn</p>
             </div>
-            <div className="flex flex-wrap gap-4 text-sm font-semibold">
-              <div className="flex items-center">
-                <span className="w-4 h-4 bg-green-500 rounded-sm mr-2 shadow-sm"></span>
-                <span className="text-gray-700">Trống (Có thể chọn)</span>
+            <div className="flex flex-wrap gap-4 text-xs sm:text-sm font-semibold">
+              <div className="flex items-center gap-2">
+                <span className="w-3.5 h-3.5 bg-[#dcfce7] border border-[#86efac] rounded-md shadow-xs"></span>
+                <span className="text-stone-700">Trống (Có thể chọn)</span>
               </div>
-              <div className="flex items-center">
-                <span className="w-4 h-4 bg-red-500 rounded-sm mr-2 shadow-sm"></span>
-                <span className="text-gray-700">Đã có khách</span>
+              <div className="flex items-center gap-2">
+                <span className="w-3.5 h-3.5 bg-[#fee2e2] border border-[#fca5a5] rounded-md shadow-xs"></span>
+                <span className="text-stone-700">Đã có khách</span>
               </div>
-              <div className="flex items-center">
-                <span className="w-4 h-4 bg-yellow-400 rounded-sm mr-2 shadow-sm"></span>
-                <span className="text-gray-700">Đang dọn (~10p)</span>
+              <div className="flex items-center gap-2">
+                <span className="w-3.5 h-3.5 bg-[#fef3c7] border border-[#fde68a] rounded-md shadow-xs"></span>
+                <span className="text-stone-700">Đang dọn (~10p)</span>
               </div>
             </div>
           </div>
 
           {/* Khu vực VIP */}
-          <div className="mb-8 bg-amber-50/50 p-5 rounded-2xl border border-amber-200/80">
+          <div className="mb-8 bg-[#fffbeb] p-5 rounded-2xl border border-[#fde68a]">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-bold text-amber-900 uppercase tracking-wider flex items-center gap-2">
-                <span>👑</span> Khu vực Phòng VIP (Không gian riêng tư cao cấp)
+              <h3 className="text-xs sm:text-sm font-bold text-[#92400e] uppercase tracking-wider flex items-center gap-2">
+                <svg className="w-4 h-4 text-[#d97706]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14"></path>
+                </svg>
+                <span>Khu vực Phòng VIP (Không gian riêng tư cao cấp)</span>
               </h3>
-              <span className="text-xs sm:text-sm font-semibold text-amber-800 bg-amber-100 px-3 py-1 rounded-full">
+              <span className="text-xs font-semibold text-[#92400e] bg-[#fef3c7] px-3 py-1 rounded-full border border-[#fcd34d]">
                 6 - 10 chỗ
               </span>
             </div>
@@ -257,23 +264,23 @@ export default function BookingDiagramPage() {
                     key={table.id}
                     onClick={() => handleSelectTable(table)}
                     disabled={!isAvailable}
-                    className={`w-24 h-24 rounded-full flex flex-col items-center justify-center font-bold shadow-md transition-all relative ${
+                    className={`w-24 h-24 rounded-full flex flex-col items-center justify-center font-bold transition-all relative border ${
                       table.status === 'occupied'
-                        ? 'bg-red-500 text-white opacity-60 cursor-not-allowed'
+                        ? 'bg-[#fee2e2] text-[#b91c1c] border-[#fca5a5] opacity-70 cursor-not-allowed'
                         : table.status === 'cleaning'
-                        ? 'bg-yellow-400 text-white cursor-not-allowed'
+                        ? 'bg-[#fef3c7] text-[#b45309] border-[#fde68a] cursor-not-allowed'
                         : isSelected
-                        ? 'bg-green-700 text-white ring-4 ring-green-300 scale-105 shadow-xl'
-                        : 'bg-green-500 text-white hover:scale-105 hover:bg-green-600 cursor-pointer'
+                        ? 'bg-[#14532d] text-white border-[#22c55e] ring-4 ring-[#bbf7d0] scale-105 shadow-lg'
+                        : 'bg-[#dcfce7] text-[#15803d] border-[#86efac] hover:bg-[#bbf7d0] hover:scale-105 cursor-pointer shadow-xs'
                     }`}
                   >
                     {isSelected && (
-                      <span className="absolute -top-1 -right-1 bg-yellow-400 text-gray-900 rounded-full w-6 h-6 flex items-center justify-center text-xs font-black shadow">
+                      <span className="absolute -top-1 -right-1 bg-[#fbbf24] text-[#1c1917] rounded-full w-6 h-6 flex items-center justify-center text-xs font-black shadow-sm">
                         ✓
                       </span>
                     )}
-                    <span className="text-lg font-bold">{table.name}</span>
-                    <span className="text-xs sm:text-sm font-medium opacity-90">{table.seats} chỗ</span>
+                    <span className="text-lg font-serif font-bold">{table.name}</span>
+                    <span className="text-xs font-medium opacity-90">{table.seats} chỗ</span>
                   </button>
                 );
               })}
@@ -281,12 +288,17 @@ export default function BookingDiagramPage() {
           </div>
 
           {/* Khu Trung tâm */}
-          <div className="mb-8 bg-gray-50/80 p-5 rounded-2xl border border-gray-200">
+          <div className="mb-8 bg-[#faf8f5] p-5 rounded-2xl border border-[#ebe7df]">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider flex items-center gap-2">
-                <span>🍽️</span> Khu Trung tâm (Không gian ấm cúng, thoáng đãng)
+              <h3 className="text-xs sm:text-sm font-bold text-stone-800 uppercase tracking-wider flex items-center gap-2">
+                <svg className="w-4 h-4 text-[#14532d]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"></path>
+                  <path d="M7 2v20"></path>
+                  <path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"></path>
+                </svg>
+                <span>Khu Trung tâm (Không gian ấm cúng, thoáng đãng)</span>
               </h3>
-              <span className="text-xs sm:text-sm font-semibold text-gray-700 bg-gray-200 px-3 py-1 rounded-full">
+              <span className="text-xs font-semibold text-stone-700 bg-stone-200 px-3 py-1 rounded-full">
                 2 - 8 chỗ
               </span>
             </div>
@@ -300,25 +312,25 @@ export default function BookingDiagramPage() {
                     key={table.id}
                     onClick={() => handleSelectTable(table)}
                     disabled={!isAvailable}
-                    className={`h-20 rounded-xl flex flex-col items-center justify-center font-bold shadow-sm transition-all relative ${
+                    className={`h-20 rounded-xl flex flex-col items-center justify-center font-bold transition-all relative border ${
                       table.id === 'B07' ? 'col-span-2' : ''
                     } ${
                       table.status === 'occupied'
-                        ? 'bg-red-500 text-white opacity-60 cursor-not-allowed'
+                        ? 'bg-[#fee2e2] text-[#b91c1c] border-[#fca5a5] opacity-70 cursor-not-allowed'
                         : table.status === 'cleaning'
-                        ? 'bg-yellow-400 text-white cursor-not-allowed'
+                        ? 'bg-[#fef3c7] text-[#b45309] border-[#fde68a] cursor-not-allowed'
                         : isSelected
-                        ? 'bg-green-700 text-white ring-4 ring-green-300 scale-105 shadow-md'
-                        : 'bg-green-500 text-white hover:scale-102 hover:bg-green-600 cursor-pointer'
+                        ? 'bg-[#14532d] text-white border-[#22c55e] ring-4 ring-[#bbf7d0] scale-105 shadow-md'
+                        : 'bg-[#dcfce7] text-[#15803d] border-[#86efac] hover:bg-[#bbf7d0] hover:scale-102 cursor-pointer shadow-xs'
                     }`}
                   >
                     {isSelected && (
-                      <span className="absolute -top-1 -right-1 bg-yellow-400 text-gray-900 rounded-full w-6 h-6 flex items-center justify-center text-xs font-black shadow">
+                      <span className="absolute -top-1 -right-1 bg-[#fbbf24] text-[#1c1917] rounded-full w-6 h-6 flex items-center justify-center text-xs font-black shadow-sm">
                         ✓
                       </span>
                     )}
-                    <span className="text-lg font-bold">{table.name}</span>
-                    <span className="text-xs sm:text-sm font-medium opacity-90">{table.seats} chỗ</span>
+                    <span className="text-lg font-serif font-bold">{table.name}</span>
+                    <span className="text-xs font-medium opacity-90">{table.seats} chỗ</span>
                   </button>
                 );
               })}
@@ -326,12 +338,17 @@ export default function BookingDiagramPage() {
           </div>
 
           {/* Cạnh cửa sổ */}
-          <div className="bg-sky-50/60 p-5 rounded-2xl border border-sky-200">
+          <div className="bg-[#f0f9ff] p-5 rounded-2xl border border-[#bae6fd]">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-bold text-sky-900 uppercase tracking-wider flex items-center gap-2">
-                <span>🪟</span> Cạnh cửa sổ (View kính ngắm thành phố lung linh)
+              <h3 className="text-xs sm:text-sm font-bold text-[#0369a1] uppercase tracking-wider flex items-center gap-2">
+                <svg className="w-4 h-4 text-[#0284c7]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect width="18" height="18" x="3" y="3" rx="2"></rect>
+                  <path d="M3 12h18"></path>
+                  <path d="M12 3v18"></path>
+                </svg>
+                <span>Cạnh cửa sổ (View kính ngắm phố lung linh)</span>
               </h3>
-              <span className="text-xs sm:text-sm font-semibold text-sky-800 bg-sky-100 px-3 py-1 rounded-full">
+              <span className="text-xs font-semibold text-[#0369a1] bg-[#e0f2fe] px-3 py-1 rounded-full border border-[#7dd3fc]">
                 4 chỗ
               </span>
             </div>
@@ -345,23 +362,23 @@ export default function BookingDiagramPage() {
                     key={table.id}
                     onClick={() => handleSelectTable(table)}
                     disabled={!isAvailable}
-                    className={`w-28 h-20 rounded-xl flex flex-col items-center justify-center font-bold shadow-sm transition-all relative ${
+                    className={`w-28 h-20 rounded-xl flex flex-col items-center justify-center font-bold transition-all relative border ${
                       table.status === 'occupied'
-                        ? 'bg-red-500 text-white opacity-60 cursor-not-allowed'
+                        ? 'bg-[#fee2e2] text-[#b91c1c] border-[#fca5a5] opacity-70 cursor-not-allowed'
                         : table.status === 'cleaning'
-                        ? 'bg-yellow-400 text-white cursor-not-allowed'
+                        ? 'bg-[#fef3c7] text-[#b45309] border-[#fde68a] cursor-not-allowed'
                         : isSelected
-                        ? 'bg-green-700 text-white ring-4 ring-green-300 scale-105 shadow-md'
-                        : 'bg-green-500 text-white hover:scale-105 hover:bg-green-600 cursor-pointer'
+                        ? 'bg-[#14532d] text-white border-[#22c55e] ring-4 ring-[#bbf7d0] scale-105 shadow-md'
+                        : 'bg-[#dcfce7] text-[#15803d] border-[#86efac] hover:bg-[#bbf7d0] hover:scale-105 cursor-pointer shadow-xs'
                     }`}
                   >
                     {isSelected && (
-                      <span className="absolute -top-1 -right-1 bg-yellow-400 text-gray-900 rounded-full w-6 h-6 flex items-center justify-center text-xs font-black shadow">
+                      <span className="absolute -top-1 -right-1 bg-[#fbbf24] text-[#1c1917] rounded-full w-6 h-6 flex items-center justify-center text-xs font-black shadow-sm">
                         ✓
                       </span>
                     )}
-                    <span className="text-lg font-bold">{table.name}</span>
-                    <span className="text-xs sm:text-sm font-medium opacity-90">{table.seats} chỗ</span>
+                    <span className="text-lg font-serif font-bold">{table.name}</span>
+                    <span className="text-xs font-medium opacity-90">{table.seats} chỗ</span>
                   </button>
                 );
               })}
@@ -373,8 +390,8 @@ export default function BookingDiagramPage() {
         <div className="lg:col-span-5 space-y-6">
           
           {/* Card Hình ảnh thực tế và View của bàn ăn */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="relative h-60 bg-gray-900 group cursor-pointer" onClick={() => setPreviewImageModal(true)}>
+          <div className="bg-white rounded-2xl shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] border border-[#ebe7df] overflow-hidden">
+            <div className="relative h-60 bg-stone-900 group cursor-pointer" onClick={() => setPreviewImageModal(true)}>
               <img
                 src={selectedTable.image}
                 alt={`Hình ảnh thực tế bàn ${selectedTable.name}`}
@@ -382,20 +399,27 @@ export default function BookingDiagramPage() {
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
               
-              <div className="absolute top-3 left-3 bg-white/95 text-green-900 text-sm font-bold px-3.5 py-1.5 rounded-full shadow-md backdrop-blur-sm flex items-center gap-1.5">
-                <span>📸</span>
-                <span>Hình ảnh thực tế bàn ăn</span>
+              <div className="absolute top-3 left-3 bg-white/95 text-[#14532d] text-xs font-bold px-3 py-1 rounded-full shadow-md backdrop-blur-xs flex items-center gap-1.5 border border-[#ebe7df]">
+                <svg className="w-3.5 h-3.5 text-[#14532d]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path>
+                  <circle cx="12" cy="13" r="3"></circle>
+                </svg>
+                <span>Ảnh thực tế bàn ăn</span>
               </div>
 
-              <div className="absolute top-3 right-3 bg-black/60 text-white text-xs sm:text-sm font-medium px-3 py-1.5 rounded-full backdrop-blur-sm flex items-center gap-1">
-                <span>🔍</span> Phóng to
+              <div className="absolute top-3 right-3 bg-black/60 text-white text-xs font-medium px-3 py-1 rounded-full backdrop-blur-xs flex items-center gap-1">
+                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <span>Phóng to</span>
               </div>
 
               <div className="absolute bottom-3 left-4 right-4 text-white">
-                <span className="text-xs sm:text-sm font-bold uppercase tracking-wider text-green-400">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#fbbf24]">
                   {selectedTable.zone} • {selectedTable.seats} chỗ ngồi
                 </span>
-                <h3 className="text-2xl font-bold leading-tight mt-1">
+                <h3 className="text-2xl font-serif font-bold leading-tight mt-1">
                   Bàn {selectedTable.name} — Không gian thực tế
                 </h3>
               </div>
@@ -404,25 +428,34 @@ export default function BookingDiagramPage() {
             {/* Chi tiết View & Đặc điểm */}
             <div className="p-6 space-y-5">
               <div>
-                <h4 className="text-sm font-bold text-gray-600 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <span>✨</span> Tầm nhìn & Cảm quan (View)
+                <h4 className="text-xs font-bold text-stone-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5 text-[#d97706]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path>
+                  </svg>
+                  <span>Tầm nhìn &amp; Cảm quan (View)</span>
                 </h4>
-                <p className="text-sm sm:text-base text-gray-700 leading-relaxed font-normal bg-gray-50 p-4 rounded-xl border border-gray-200">
+                <p className="text-xs sm:text-sm text-stone-700 leading-relaxed font-normal bg-[#faf8f5] p-4 rounded-xl border border-[#ebe7df]">
                   {selectedTable.viewDescription}
                 </p>
               </div>
 
               <div>
-                <h4 className="text-sm font-bold text-gray-600 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-                  <span>💎</span> Tiện ích & Điểm nổi bật
+                <h4 className="text-xs font-bold text-stone-500 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5 text-[#14532d]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                  </svg>
+                  <span>Tiện ích &amp; Điểm nổi bật</span>
                 </h4>
                 <div className="flex flex-wrap gap-2">
                   {selectedTable.features.map((feat, idx) => (
                     <span
                       key={idx}
-                      className="text-xs sm:text-sm bg-green-50 text-green-800 font-semibold px-3 py-1.5 rounded-lg border border-green-200"
+                      className="text-xs bg-[#f0fdf4] text-[#15803d] font-semibold px-3 py-1.5 rounded-lg border border-[#bbf7d0] flex items-center gap-1"
                     >
-                      ✓ {feat}
+                      <svg className="w-3 h-3 text-[#15803d]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                      </svg>
+                      <span>{feat}</span>
                     </span>
                   ))}
                 </div>
@@ -431,53 +464,61 @@ export default function BookingDiagramPage() {
           </div>
 
           {/* Box Xác nhận bàn và chuyển tiếp sang Bước 3 */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-7">
-            <div className="border-b pb-4 mb-4">
-              <span className="text-xs sm:text-sm font-bold text-green-700 uppercase tracking-wider">Thông tin đặt bàn</span>
-              <h2 className="text-2xl font-bold text-gray-900 mt-1">
+          <div className="bg-white rounded-2xl shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] border border-[#ebe7df] p-6 sm:p-7">
+            <div className="border-b border-[#ebe7df] pb-4 mb-4">
+              <span className="text-xs font-bold text-[#14532d] uppercase tracking-wider">Thông tin đặt bàn</span>
+              <h2 className="text-2xl font-serif font-bold text-stone-900 mt-1">
                 Bàn {selectedTable.name} — {selectedTable.seats} người
               </h2>
             </div>
             
-            <div className="space-y-3.5 text-sm sm:text-base mb-6">
-              <div className="flex justify-between items-center py-1.5 border-b border-gray-100">
-                <span className="text-gray-500">Khách hàng:</span>
-                <span className="font-bold text-gray-900">
+            <div className="space-y-3.5 text-xs sm:text-sm mb-6">
+              <div className="flex justify-between items-center py-1.5 border-b border-stone-100">
+                <span className="text-stone-500">Khách hàng:</span>
+                <span className="font-semibold text-stone-900">
                   {bookingInfo?.name || 'Nguyễn Văn A'} ({bookingInfo?.phone || '09xx xxx xxx'})
                 </span>
               </div>
-              <div className="flex justify-between items-center py-1.5 border-b border-gray-100">
-                <span className="text-gray-500">Ngày dùng bữa:</span>
-                <span className="font-bold text-gray-900">{bookingInfo?.date || '2026-10-25'}</span>
+              <div className="flex justify-between items-center py-1.5 border-b border-stone-100">
+                <span className="text-stone-500">Ngày dùng bữa:</span>
+                <span className="font-semibold text-stone-900">{bookingInfo?.date || '2026-10-25'}</span>
               </div>
-              <div className="flex justify-between items-center py-1.5 border-b border-gray-100">
-                <span className="text-gray-500">Giờ đến:</span>
-                <span className="font-bold text-green-800 bg-green-50 px-2.5 py-1 rounded border border-green-200">
+              <div className="flex justify-between items-center py-1.5 border-b border-stone-100">
+                <span className="text-stone-500">Giờ đến:</span>
+                <span className="font-bold text-[#14532d] bg-[#f0fdf4] px-2.5 py-1 rounded-md border border-[#bbf7d0]">
                   {bookingInfo?.time || '19:00'}
                 </span>
               </div>
             </div>
 
-            <div className="bg-emerald-50/80 p-4 rounded-xl mb-6 border border-emerald-200 text-sm text-emerald-950">
-              <p className="font-bold text-emerald-900 mb-1 flex items-center gap-1.5">
-                <span>🍽️</span> Bước tiếp theo: Chọn món ăn (Tùy chọn)
+            <div className="bg-[#f0fdf4] p-4 rounded-xl mb-6 border border-[#bbf7d0] text-xs sm:text-sm text-[#14532d]">
+              <p className="font-bold mb-1 flex items-center gap-1.5">
+                <svg className="w-4 h-4 text-[#15803d]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"></path>
+                  <path d="M7 2v20"></path>
+                  <path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"></path>
+                </svg>
+                <span>Bước tiếp theo: Chọn món ăn (Tùy chọn)</span>
               </p>
-              <p className="text-xs sm:text-sm text-emerald-800 leading-relaxed">
-                Bạn có thể chọn đặt trước các món đặc biệt hoặc chọn bỏ qua để tới bước xác nhận.
+              <p className="text-stone-600 leading-relaxed text-xs">
+                Bạn có thể chọn đặt trước các món đặc quyền hoặc chọn bỏ qua để tới bước xác nhận.
               </p>
             </div>
 
             <button
               onClick={handleContinue}
-              className="interactive-btn w-full flex items-center justify-center gap-2 bg-green-800 text-white font-bold py-4 rounded-xl hover:bg-green-900 shadow-md transition-all text-base sm:text-lg mb-3"
+              className="w-full flex items-center justify-center gap-2 bg-[#14532d] hover:bg-[#15803d] text-white font-semibold py-4 rounded-xl shadow-[0_8px_24px_-4px_rgba(20,83,45,0.45)] hover:shadow-[0_12px_28px_-4px_rgba(20,83,45,0.6)] transition-all text-sm sm:text-base mb-3 cursor-pointer"
             >
               <span>Tiếp tục: Chọn món ăn vào Giỏ hàng</span>
-              <span>→</span>
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M5 12h14"></path>
+                <path d="m12 5 7 7-7 7"></path>
+              </svg>
             </button>
 
             <Link
               href="/booking"
-              className="interactive-btn block w-full text-center text-gray-600 font-semibold py-2.5 hover:text-gray-900 hover:bg-gray-100 rounded-lg text-sm sm:text-base transition-colors"
+              className="block w-full text-center text-stone-500 font-semibold py-2.5 hover:text-[#14532d] hover:bg-stone-100 rounded-lg text-xs sm:text-sm transition-colors"
             >
               ← Quay lại sửa thông tin bàn
             </Link>
@@ -490,14 +531,14 @@ export default function BookingDiagramPage() {
       {/* Modal phóng to ảnh thực tế bàn ăn */}
       {previewImageModal && (
         <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-black/80 backdrop-blur-xs z-50 flex items-center justify-center p-4"
           onClick={() => setPreviewImageModal(false)}
         >
           <div
             className="bg-white rounded-3xl max-w-3xl w-full overflow-hidden shadow-2xl animate-scale-up"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="relative h-96 bg-gray-950">
+            <div className="relative h-96 bg-stone-950">
               <img
                 src={selectedTable.image}
                 alt={selectedTable.name}
@@ -505,15 +546,15 @@ export default function BookingDiagramPage() {
               />
               <button
                 onClick={() => setPreviewImageModal(false)}
-                className="absolute top-4 right-4 bg-black/60 text-white w-9 h-9 rounded-full flex items-center justify-center text-lg hover:bg-black transition-colors"
+                className="absolute top-4 right-4 bg-black/60 text-white w-9 h-9 rounded-full flex items-center justify-center text-sm hover:bg-black transition-colors cursor-pointer"
               >
                 ✕
               </button>
-              <div className="absolute bottom-4 left-4 right-4 bg-black/60 backdrop-blur-sm p-4 rounded-2xl text-white">
-                <span className="text-xs font-bold text-green-400 uppercase">
+              <div className="absolute bottom-4 left-4 right-4 bg-black/70 backdrop-blur-xs p-4 rounded-2xl text-white">
+                <span className="text-xs font-bold text-[#fbbf24] uppercase">
                   {selectedTable.zone} • Bàn {selectedTable.name} ({selectedTable.seats} chỗ)
                 </span>
-                <p className="text-xs text-gray-200 mt-1">{selectedTable.viewDescription}</p>
+                <p className="text-xs text-stone-200 mt-1">{selectedTable.viewDescription}</p>
               </div>
             </div>
           </div>

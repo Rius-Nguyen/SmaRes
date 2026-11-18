@@ -220,7 +220,7 @@ export default function KDSPage() {
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
             </div>
             <p className="text-[11px] text-stone-400 mt-1">
-              Hệ thống gom nhóm chế biến thông minh & Điều phối bếp
+              Hệ thống gom nhóm chế biến thông minh &amp; Điều phối bếp
             </p>
           </div>
         </div>
@@ -230,13 +230,25 @@ export default function KDSPage() {
           <button
             type="button"
             onClick={() => setAutoRefresh((v) => !v)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition-all cursor-pointer ${
+            className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 border transition-all cursor-pointer ${
               autoRefresh
                 ? 'bg-emerald-950/80 border-emerald-700 text-emerald-300'
                 : 'bg-stone-800 border-stone-700 text-stone-400'
             }`}
           >
-            <span className="text-xs">{autoRefresh ? '🔄' : '⏸️'}</span>
+            {autoRefresh ? (
+              <svg className="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                <path d="M3 3v5h5"></path>
+                <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
+                <path d="M16 21h5v-5"></path>
+              </svg>
+            ) : (
+              <svg className="w-3.5 h-3.5 text-stone-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <rect x="6" y="4" width="4" height="16"></rect>
+                <rect x="14" y="4" width="4" height="16"></rect>
+              </svg>
+            )}
             <span className="hidden sm:inline">
               {autoRefresh ? 'Tự cập nhật (10s)' : 'Tạm dừng'}
             </span>
@@ -244,9 +256,13 @@ export default function KDSPage() {
 
           <Link
             href="/admin/menu"
-            className="px-3.5 py-1.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-semibold border border-stone-700 transition-colors"
+            className="min-h-[44px] px-4 py-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-semibold border border-stone-700 transition-colors flex items-center gap-1.5"
           >
-            Kho món →
+            <span>Kho món</span>
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M5 12h14"></path>
+              <path d="m12 5 7 7-7 7"></path>
+            </svg>
           </Link>
         </div>
       </header>
@@ -345,18 +361,21 @@ export default function KDSPage() {
                       )}
                     </div>
 
-                    {/* Nút hành động chế biến */}
+                    {/* Nút hành động chế biến (Touch-friendly 44px) */}
                     <div className="pt-2 mt-2 border-t border-stone-800/80">
                       <button
                         type="button"
                         onClick={() => handleBatchCookDish(group)}
-                        className={`w-full py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                        className={`w-full min-h-[44px] py-2.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
                           isCooking
-                            ? 'bg-amber-500 text-stone-950 hover:bg-amber-400'
-                            : 'bg-emerald-800 hover:bg-emerald-700 text-white'
+                            ? 'bg-amber-500 text-stone-950 hover:bg-amber-400 shadow-md'
+                            : 'bg-[#14532d] hover:bg-[#15803d] text-white shadow-sm'
                         }`}
                       >
-                        <span>{isCooking ? '🔥 Đang nấu cả cụm' : '🍳 Bắt đầu nấu cả cụm'}</span>
+                        <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                        </svg>
+                        <span>{isCooking ? 'Đang nấu cả cụm' : 'Bắt đầu nấu cả cụm'}</span>
                       </button>
                     </div>
                   </div>
@@ -484,23 +503,30 @@ export default function KDSPage() {
                     })}
                   </div>
 
-                  {/* Nút đổi trạng thái đơn */}
+                  {/* Nút đổi trạng thái đơn (Touch-friendly 44px) */}
                   <div className="p-3 bg-stone-900/60 border-t border-stone-800 flex items-center gap-2">
                     {isPending ? (
                       <button
                         type="button"
                         onClick={() => handleUpdateOrderStatus(order._id, 'COOKING')}
-                        className="w-full py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-stone-950 font-bold text-xs transition-colors cursor-pointer text-center"
+                        className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-600 text-stone-950 font-bold text-xs transition-colors cursor-pointer text-center flex items-center justify-center gap-1.5 shadow-sm"
                       >
-                        Bắt đầu nấu →
+                        <span>Bắt đầu nấu</span>
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <path d="M5 12h14"></path>
+                          <path d="m12 5 7 7-7 7"></path>
+                        </svg>
                       </button>
                     ) : (
                       <button
                         type="button"
                         onClick={() => handleUpdateOrderStatus(order._id, 'COMPLETED')}
-                        className="w-full py-2 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs transition-colors cursor-pointer text-center"
+                        className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-[#14532d] hover:bg-[#15803d] text-white font-bold text-xs transition-colors cursor-pointer text-center flex items-center justify-center gap-1.5 shadow-sm"
                       >
-                        ✓ Hoàn thành đơn
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                          <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                        <span>Hoàn thành đơn</span>
                       </button>
                     )}
                   </div>
