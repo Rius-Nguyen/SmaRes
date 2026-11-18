@@ -1,7 +1,6 @@
 "use client";
 
 import React from 'react';
-import Link from 'next/link';
 
 interface BookingStepperProps {
   currentStep: 1 | 2 | 3 | 4;
@@ -9,20 +8,20 @@ interface BookingStepperProps {
 
 export default function BookingStepper({ currentStep }: BookingStepperProps) {
   const steps = [
-    { number: 1, title: 'Thông tin bàn', desc: 'Ngày, giờ & số khách', path: '/booking' },
-    { number: 2, title: 'Vị trí bàn', desc: 'Chọn bàn trên sơ đồ', path: '/booking/diagram' },
-    { number: 3, title: 'Chọn món ăn', desc: 'Giỏ hàng đặt trước (Tùy chọn)', path: '/booking/menu' },
-    { number: 4, title: 'Xác nhận', desc: 'Hoàn tất đặt bàn & thực đơn', path: '/booking/confirm' },
+    { number: 1, title: 'Thông tin bàn', desc: 'Ngày, giờ & số khách' },
+    { number: 2, title: 'Vị trí bàn', desc: 'Chọn bàn trên sơ đồ' },
+    { number: 3, title: 'Chọn món ăn', desc: 'Đặt món trước (Tùy chọn)' },
+    { number: 4, title: 'Xác nhận', desc: 'Hoàn tất đặt bàn & hóa đơn' },
   ];
 
   return (
-    <div className="w-full bg-white border-b border-gray-100 shadow-sm py-5 px-4 sm:px-6">
-      <div className="max-w-5xl mx-auto">
+    <div className="w-full bg-white/90 backdrop-blur-sm border-b border-[#ebe7df] shadow-[0_2px_8px_rgba(28,25,23,0.03)] py-6 px-4 sm:px-6">
+      <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between relative">
-          {/* Đường line kết nối các bước */}
-          <div className="absolute top-6 left-10 right-10 h-1 bg-gray-200 -z-0 hidden md:block rounded-full">
+          {/* Đường line kết nối tiến trình */}
+          <div className="absolute top-6 left-12 right-12 h-1 bg-[#ebe7df] -z-0 hidden md:block rounded-full">
             <div
-              className="h-full bg-green-700 transition-all duration-500 rounded-full"
+              className="h-full bg-[#14532d] transition-all duration-500 rounded-full"
               style={{
                 width:
                   currentStep === 1
@@ -33,7 +32,7 @@ export default function BookingStepper({ currentStep }: BookingStepperProps) {
                     ? '66.6%'
                     : '100%',
               }}
-            ></div>
+            />
           </div>
 
           {steps.map((step) => {
@@ -44,37 +43,37 @@ export default function BookingStepper({ currentStep }: BookingStepperProps) {
               <div key={step.number} className="flex-1 flex flex-col items-center text-center relative z-10 px-1">
                 {/* Vòng tròn số bước */}
                 <div
-                  className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center font-bold text-lg sm:text-xl transition-all duration-300 shadow-sm ${
+                  className={`w-12 h-12 sm:w-13 sm:h-13 rounded-full flex items-center justify-center font-bold text-base sm:text-lg transition-all duration-300 ${
                     isCompleted
-                      ? 'bg-green-700 text-white ring-4 ring-green-100'
+                      ? 'bg-[#14532d] text-white ring-4 ring-[#dcfce7] shadow-xs'
                       : isCurrent
-                      ? 'bg-green-800 text-white ring-4 ring-green-200 scale-105 shadow-md'
-                      : 'bg-gray-100 text-gray-400 border border-gray-300'
+                      ? 'bg-[#14532d] text-white ring-4 ring-[#fef3c7] scale-105 shadow-[0_4px_16px_rgba(20,83,45,0.25)]'
+                      : 'bg-[#faf8f5] text-[#a8a29e] border border-[#d6d0c4]'
                   }`}
                 >
                   {isCompleted ? (
-                    <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
                     </svg>
                   ) : (
-                    step.number
+                    <span className="font-serif">{step.number}</span>
                   )}
                 </div>
 
                 {/* Tiêu đề & mô tả */}
-                <div className="mt-3">
+                <div className="mt-3 space-y-0.5">
                   <p
-                    className={`text-base sm:text-lg font-bold whitespace-nowrap ${
+                    className={`font-serif text-sm sm:text-base font-bold whitespace-nowrap ${
                       isCurrent
-                        ? 'text-green-800'
+                        ? 'text-[#14532d]'
                         : isCompleted
-                        ? 'text-gray-900'
-                        : 'text-gray-400'
+                        ? 'text-[#1c1917]'
+                        : 'text-[#a8a29e]'
                     }`}
                   >
                     {step.title}
                   </p>
-                  <p className="text-xs sm:text-sm text-gray-500 font-medium hidden sm:block mt-1">
+                  <p className="text-[11px] sm:text-xs text-[#78716c] font-medium hidden sm:block">
                     {step.desc}
                   </p>
                 </div>

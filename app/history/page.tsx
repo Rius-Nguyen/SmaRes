@@ -16,14 +16,19 @@ export default function HistoryPage() {
   };
 
   return (
-    <main className="flex-1 bg-gray-50 py-12 px-4 min-h-screen">
-      <div className="max-w-7xl mx-auto bg-white rounded-2xl shadow-sm border border-gray-200 p-6 md:p-10 relative">
+    <main className="flex-1 bg-[#faf8f5] text-[#1c1917] py-12 px-4 sm:px-6 lg:px-8 min-h-screen">
+      <div className="max-w-7xl mx-auto bg-white rounded-2xl shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] border border-[#ebe7df] p-6 md:p-10 relative">
         
-        <div className="flex flex-col md:flex-row justify-between items-center mb-8 pb-4 border-b">
-          <h1 className="text-2xl font-bold font-sans text-gray-900 mb-4 md:mb-0">Lịch sử đặt bàn</h1>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 pb-4 border-b border-[#ebe7df] gap-4">
+          <div>
+            <span className="text-xs font-bold uppercase tracking-wider text-[#15803d] bg-[#f0fdf4] px-3.5 py-1.5 rounded-full border border-[#bbf7d0] inline-block mb-2">
+              Quản lý đặt bàn
+            </span>
+            <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#14532d]">Lịch Sử Đặt Bàn</h1>
+          </div>
           <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-500">Trạng thái:</span>
-            <select className="border-gray-300 rounded-lg text-sm focus:ring-green-700 outline-none px-3 py-1.5 border bg-white">
+            <span className="text-xs sm:text-sm text-stone-500 font-medium">Trạng thái:</span>
+            <select className="border border-[#d6d0c4] rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-[#14532d] outline-none px-3.5 py-2 bg-white text-stone-800">
               <option>Tất cả</option>
               <option>Sắp tới</option>
               <option>Đã hoàn thành</option>
@@ -35,7 +40,7 @@ export default function HistoryPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[800px]">
             <thead>
-              <tr className="text-sm font-semibold text-gray-700 border-b border-gray-100">
+              <tr className="text-xs font-bold text-stone-500 uppercase tracking-wider border-b border-[#ebe7df]">
                 <th className="pb-4 pl-4">Mã đặt chỗ</th>
                 <th className="pb-4">Ngày đặt</th>
                 <th className="pb-4">Giờ</th>
@@ -45,21 +50,21 @@ export default function HistoryPage() {
                 <th className="pb-4 text-center">Hành động</th>
               </tr>
             </thead>
-            <tbody className="text-sm text-gray-600">
+            <tbody className="text-sm text-stone-600 divide-y divide-[#ebe7df]">
               
               {/* Dòng 1: Nhấn Huỷ đơn Xác nhận huỷ đơn hàng */}
-              <tr className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                <td className="py-4 pl-4 font-semibold text-gray-900">SR-2024-0847</td>
-                <td className="py-4">25/10/2024</td>
-                <td className="py-4">19:00</td>
-                <td className="py-4">Bàn B05</td>
+              <tr className="hover:bg-[#faf8f5] transition-colors">
+                <td className="py-4 pl-4 font-mono font-bold text-[#14532d]">SR-2024-0847</td>
+                <td className="py-4 text-stone-800">25/10/2024</td>
+                <td className="py-4 text-stone-800">19:00</td>
+                <td className="py-4 font-semibold text-stone-900">Bàn B05</td>
                 <td className="py-4">4 người</td>
                 <td className="py-4">
                   {/* Tự động đổi màu dựa trên biến bookingStatus */}
                   {bookingStatus === "Sắp tới" ? (
-                    <span className="px-3 py-1 text-xs font-bold text-green-700 bg-green-100 rounded-full">Sắp tới</span>
+                    <span className="px-3 py-1 text-xs font-semibold text-[#15803d] bg-[#f0fdf4] rounded-full border border-[#bbf7d0]">Sắp tới</span>
                   ) : (
-                    <span className="px-3 py-1 text-xs font-bold text-red-600 bg-red-100 rounded-full">Đã hủy</span>
+                    <span className="px-3 py-1 text-xs font-semibold text-[#b91c1c] bg-[#fee2e2] rounded-full border border-[#fca5a5]">Đã hủy</span>
                   )}
                 </td>
                 <td className="py-4 text-center">
@@ -67,39 +72,40 @@ export default function HistoryPage() {
                   {bookingStatus === "Sắp tới" ? (
                     <button 
                       onClick={() => setIsModalOpen(true)} 
-                      className="interactive-btn text-red-500 font-semibold hover:text-red-700 px-3 py-1 rounded-md hover:bg-red-50"
+                      className="text-xs font-semibold text-rose-600 hover:text-rose-800 px-3 py-1.5 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer border border-rose-200"
                     >
                       Hủy bàn
                     </button>
                   ) : (
-                    <span className="text-gray-400">—</span>
+                    <span className="text-stone-300">—</span>
                   )}
                 </td>
               </tr>
 
               {/* Dòng 2: Đã hoàn thành */}
-              <tr className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                <td className="py-4 pl-4 font-semibold text-gray-900">SR-2024-0711</td>
-                <td className="py-4">12/09/2024</td>
-                <td className="py-4">12:00</td>
-                <td className="py-4">Bàn B02</td>
+              <tr className="hover:bg-[#faf8f5] transition-colors">
+                <td className="py-4 pl-4 font-mono font-bold text-stone-700">SR-2024-0711</td>
+                <td className="py-4 text-stone-800">12/09/2024</td>
+                <td className="py-4 text-stone-800">12:00</td>
+                <td className="py-4 font-semibold text-stone-900">Bàn B02</td>
                 <td className="py-4">2 người</td>
                 <td className="py-4">
-                  <span className="px-3 py-1 text-xs font-bold text-gray-600 bg-gray-100 rounded-full border border-gray-200">Đã hoàn thành</span>
+                  <span className="px-3 py-1 text-xs font-semibold text-stone-600 bg-stone-100 rounded-full border border-[#ebe7df]">Đã hoàn thành</span>
                 </td>
-                <td className="py-4 text-center text-gray-400">—</td>
+                <td className="py-4 text-center text-stone-300">—</td>
               </tr>
-            {/* Dòng 3: Đã hủy */}
-              <tr className="hover:bg-gray-50 transition-colors">
-                <td className="py-4 pl-4 font-semibold text-gray-900">SR-2024-0519</td>
-                <td className="py-4">01/08/2024</td>
-                <td className="py-4">18:30</td>
-                <td className="py-4">Bàn W01</td>
-                <td className="py-4">6 người</td>
+
+              {/* Dòng 3: Đã hủy */}
+              <tr className="hover:bg-[#faf8f5] transition-colors">
+                <td className="py-4 pl-4 font-mono font-bold text-stone-400">SR-2024-0519</td>
+                <td className="py-4 text-stone-500">01/08/2024</td>
+                <td className="py-4 text-stone-500">18:30</td>
+                <td className="py-4 font-semibold text-stone-500">Bàn W01</td>
+                <td className="py-4 text-stone-500">6 người</td>
                 <td className="py-4">
-                  <span className="px-3 py-1 text-xs font-bold text-red-600 bg-red-100 rounded-full">Đã hủy</span>
+                  <span className="px-3 py-1 text-xs font-semibold text-[#b91c1c] bg-[#fee2e2] rounded-full border border-[#fca5a5]">Đã hủy</span>
                 </td>
-                <td className="py-4 text-center text-gray-400">—</td>
+                <td className="py-4 text-center text-stone-300">—</td>
               </tr>
 
             </tbody>
@@ -109,24 +115,24 @@ export default function HistoryPage() {
 
       {/* MODAL: Xác nhận hủy bàn */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-          <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl transform transition-all">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs px-4">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl border border-[#ebe7df] animate-scale-up">
             
-            <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4 border border-rose-200">
               <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
               </svg>
             </div>
 
-            <h3 className="text-xl font-bold text-gray-900 mb-2">Xác nhận hủy đặt bàn?</h3>
-            <p className="text-sm text-gray-500 mb-8 leading-relaxed">
-              Bạn có chắc chắn muốn hủy đặt bàn <span className="font-bold text-gray-800">SR-2024-0847</span>? Hành động này không thể hoàn tác.
+            <h3 className="text-xl font-serif font-bold text-[#1c1917] mb-2">Xác nhận hủy đặt bàn?</h3>
+            <p className="text-xs sm:text-sm text-stone-500 mb-8 leading-relaxed">
+              Bạn có chắc chắn muốn hủy đặt bàn <span className="font-mono font-bold text-stone-800">SR-2024-0847</span>? Hành động này không thể hoàn tác.
             </p>
 
             <div className="flex space-x-3">
               <button 
                 onClick={() => setIsModalOpen(false)}
-                className="interactive-btn w-1/2 py-2.5 border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                className="w-1/2 py-2.5 border border-[#d6d0c4] rounded-xl text-xs sm:text-sm font-semibold text-stone-700 hover:bg-stone-50 transition-colors cursor-pointer"
               >
                 Không, giữ lại
               </button>
@@ -134,7 +140,7 @@ export default function HistoryPage() {
               {/* Gọi hàm handleConfirmCancel khi bấm nút này */}
               <button 
                 onClick={handleConfirmCancel}
-                className="interactive-btn w-1/2 py-2.5 bg-red-600 rounded-lg text-sm font-bold text-white hover:bg-red-700 shadow-sm"
+                className="w-1/2 py-2.5 bg-rose-600 rounded-xl text-xs sm:text-sm font-semibold text-white hover:bg-rose-700 shadow-sm transition-colors cursor-pointer"
               >
                 Xác nhận hủy
               </button>
@@ -142,7 +148,6 @@ export default function HistoryPage() {
           </div>
         </div>
       )}
-
     </main>
   );
 }

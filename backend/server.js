@@ -23,6 +23,7 @@ connectDB();
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/orders', require('./routes/orders')); 
 app.use('/api/menu', require('./routes/menu')); // <--- THÊM DÒNG NÀY CHO TASK TK-94
+app.use('/api/v1/tables', require('./routes/table.routes')); // <--- TK-142: Kiểm tra QR access bàn ăn
 
 // Mở cổng máy chủ
 const PORT = process.env.PORT || 5000;

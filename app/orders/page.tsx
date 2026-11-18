@@ -95,10 +95,10 @@ export default function OrderHistoryPage() {
   // Trạng thái Đang tải dữ liệu
   if (loading) {
     return (
-      <div className="min-h-screen flex justify-center items-center bg-gray-50">
+      <div className="min-h-screen flex justify-center items-center bg-[#faf8f5]">
         <div className="text-center">
-          <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-          <p className="text-gray-600 font-medium">Đang kết nối API & tải dữ liệu từ Database...</p>
+          <div className="w-10 h-10 border-4 border-[#14532d] border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+          <p className="text-stone-600 font-medium text-sm">Đang kết nối API &amp; tải dữ liệu từ Database...</p>
         </div>
       </div>
     );
@@ -107,9 +107,16 @@ export default function OrderHistoryPage() {
   // Trạng thái Lỗi API
   if (error) {
     return (
-      <div className="max-w-2xl mx-auto my-10 p-4 bg-red-50 border border-red-200 text-red-600 rounded-lg text-center">
-        <p className="font-semibold">⚠️ Không thể tích hợp dữ liệu API:</p>
-        <p className="text-sm mt-1">{error}</p>
+      <div className="max-w-2xl mx-auto my-10 p-5 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-center">
+        <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center mx-auto mb-2 text-rose-600">
+          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+        </div>
+        <p className="font-semibold text-sm">Không thể tích hợp dữ liệu API:</p>
+        <p className="text-xs mt-1 text-rose-600/90">{error}</p>
       </div>
     );
   }
@@ -117,71 +124,85 @@ export default function OrderHistoryPage() {
   // Trạng thái Chưa có đơn hàng
   if (!orders || orders.length === 0) {
     return (
-      <div className="max-w-2xl mx-auto my-10 p-8 bg-white border rounded-xl shadow-sm text-center">
-        <p className="text-gray-500 font-medium">Chưa có lịch sử đơn hàng nào trong CSDL MongoDB.</p>
+      <div className="max-w-2xl mx-auto my-12 p-8 bg-white border border-[#ebe7df] rounded-2xl shadow-xs text-center">
+        <div className="w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center mx-auto mb-3 text-stone-400">
+          <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+            <rect width="18" height="18" x="3" y="3" rx="2"></rect>
+            <path d="M9 12h6"></path>
+          </svg>
+        </div>
+        <p className="font-serif font-bold text-stone-800 text-base mb-1">Chưa có đơn hàng nào</p>
+        <p className="text-stone-500 text-xs">Hiện tại chưa có lịch sử đơn hàng nào trong CSDL MongoDB.</p>
       </div>
     );
   }
 
   // Đổ dữ liệu thực tế ra giao diện UI
   return (
-    <div className="max-w-4xl mx-auto p-6 my-6">
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">Lịch Sử Đặt Bàn & Quản Lý Đơn Hàng (Staff)</h1>
+    <div className="max-w-4xl mx-auto p-6 my-8">
+      <div className="mb-6">
+        <span className="text-xs font-bold uppercase tracking-wider text-[#15803d] bg-[#f0fdf4] px-3.5 py-1.5 rounded-full border border-[#bbf7d0] inline-block mb-2">
+          Hệ thống điều phối
+        </span>
+        <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#14532d]">
+          Lịch Sử Đặt Bàn &amp; Quản Lý Đơn Hàng (Staff)
+        </h1>
+      </div>
 
       <div className="space-y-4">
         {orders.map((order) => (
-          <div key={order._id} className="border border-gray-200 rounded-xl p-5 bg-white shadow-sm hover:shadow-md transition">
-            <div className="flex justify-between items-center pb-3 border-b border-gray-100">
+          <div key={order._id} className="border border-[#ebe7df] rounded-2xl p-5 bg-white shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] hover:shadow-md transition-all">
+            <div className="flex justify-between items-center pb-3 border-b border-[#ebe7df]">
               <div>
-                <span className="text-xs text-gray-400 block">Mã đơn hàng</span>
-                <span className="font-mono text-sm font-bold text-gray-700">{order._id}</span>
+                <span className="text-[11px] text-stone-400 block font-medium uppercase tracking-wider">Mã đơn hàng</span>
+                <span className="font-mono text-sm font-bold text-stone-800">{order._id}</span>
               </div>
 
               {/* Dropdown Action đổi trạng thái cho Staff (TK-113) */}
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400 font-medium">Trạng thái:</span>
+                <span className="text-xs text-stone-500 font-medium">Trạng thái:</span>
                 <select
                   value={order.status || 'PENDING'}
                   onChange={(e) => handleUpdateStatus(order._id, e.target.value)}
-                  className={`px-3 py-1 text-xs font-semibold rounded-lg border cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400 transition ${
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg border cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#14532d] transition ${
                     order.status === 'PENDING'
-                      ? 'bg-amber-50 text-amber-800 border-amber-300'
+                      ? 'bg-[#fffbeb] text-[#92400e] border-[#fde68a]'
                       : order.status === 'COOKING'
-                      ? 'bg-blue-50 text-blue-800 border-blue-300'
+                      ? 'bg-[#eff6ff] text-[#1e40af] border-[#bfdbfe]'
                       : order.status === 'COMPLETED'
-                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                      : 'bg-red-50 text-red-800 border-red-300'
+                      ? 'bg-[#f0fdf4] text-[#15803d] border-[#bbf7d0]'
+                      : 'bg-[#fee2e2] text-[#b91c1c] border-[#fca5a5]'
                   }`}
                 >
-                  <option value="PENDING">⏳ PENDING (Chờ xác nhận)</option>
-                  <option value="COOKING">🍳 COOKING (Đang nấu)</option>
-                  <option value="COMPLETED">✅ COMPLETED (Hoàn thành)</option>
-                  <option value="CANCELLED">❌ CANCELLED (Đã hủy)</option>
+                  <option value="PENDING">PENDING (Chờ xác nhận)</option>
+                  <option value="COOKING">COOKING (Đang nấu)</option>
+                  <option value="COMPLETED">COMPLETED (Hoàn thành)</option>
+                  <option value="CANCELLED">CANCELLED (Đã hủy)</option>
                 </select>
               </div>
             </div>
 
             {/* Chi tiết từng món ăn trong giỏ hàng */}
-            <div className="py-3 space-y-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Danh sách món ăn:</p>
+            <div className="py-3.5 space-y-2.5">
+              <p className="text-[11px] font-bold text-stone-500 uppercase tracking-wider">Danh sách món ăn:</p>
               {order.items?.map((item, idx) => (
-                <div key={idx} className="flex justify-between items-center text-sm">
-                  <span className="text-gray-800 font-medium">
-                    {item.name} <span className="text-gray-400">x{item.quantity}</span>
+                <div key={idx} className="flex justify-between items-center text-xs sm:text-sm">
+                  <span className="text-stone-800 font-medium">
+                    {item.name} <span className="text-stone-400">× {item.quantity}</span>
                   </span>
-                  <span className="text-gray-600">{(item.price * item.quantity).toLocaleString()} VNĐ</span>
+                  <span className="text-stone-600 font-mono font-medium">{(item.price * item.quantity).toLocaleString()} VNĐ</span>
                 </div>
               ))}
             </div>
 
             {/* Chân trang thông tin liên hệ và tổng tiền */}
-            <div className="pt-3 border-t border-gray-100 flex justify-between items-center text-sm">
-              <span className="text-gray-500">
-                SĐT: <strong className="text-gray-700">{order.phone}</strong>
+            <div className="pt-3 border-t border-[#ebe7df] flex justify-between items-center text-xs sm:text-sm">
+              <span className="text-stone-500">
+                SĐT: <strong className="text-stone-800">{order.phone}</strong>
               </span>
               <div className="text-right">
-                <span className="text-xs text-gray-400 block">Tổng thanh toán</span>
-                <span className="text-lg font-bold text-red-600">{order.totalAmount?.toLocaleString()} VNĐ</span>
+                <span className="text-[11px] text-stone-400 block font-medium">Tổng thanh toán</span>
+                <span className="text-lg font-serif font-bold text-[#d97706]">{order.totalAmount?.toLocaleString()} VNĐ</span>
               </div>
             </div>
           </div>

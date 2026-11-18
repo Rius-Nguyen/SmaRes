@@ -14,56 +14,56 @@ export default function BookingSuccessPage() {
   const name = bookingInfo?.name || 'Quý khách';
 
   return (
-    <main className="flex-1 flex items-center justify-center bg-gray-100 py-16 px-4">
-      <div className="bg-white rounded-3xl shadow-xl p-8 max-w-lg w-full text-center border border-gray-100">
+    <main className="flex-1 flex items-center justify-center bg-[#faf8f5] text-[#1c1917] py-16 px-4">
+      <div className="bg-white rounded-3xl shadow-[0_8px_30px_-4px_rgba(28,25,23,0.08)] p-8 max-w-lg w-full text-center border border-[#ebe7df]">
         {/* Icon Dấu tích xanh */}
-        <div className="w-16 h-16 bg-green-700 text-white rounded-full flex items-center justify-center mx-auto mb-5 shadow-md">
+        <div className="w-16 h-16 bg-[#14532d] text-white rounded-full flex items-center justify-center mx-auto mb-5 shadow-[0_8px_20px_-4px_rgba(20,83,45,0.4)] border border-[#22c55e]/30">
           <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path>
           </svg>
         </div>
 
-        <h1 className="text-3xl font-bold font-sans text-green-800 mb-1">Đặt bàn thành công!</h1>
-        <p className="text-gray-500 text-sm mb-6">
+        <h1 className="text-3xl font-serif font-bold text-[#14532d] mb-1">Đặt bàn thành công!</h1>
+        <p className="text-stone-500 text-sm mb-6">
           Cảm ơn bạn đã lựa chọn trải nghiệm ẩm thực tại SmaRes
         </p>
 
         {/* Khối thông tin chi tiết & QR Code */}
-        <div className="bg-gray-50 border border-gray-200 rounded-2xl p-5 text-left mb-6 flex justify-between items-center gap-4">
+        <div className="bg-[#faf8f5] border border-[#ebe7df] rounded-2xl p-5 text-left mb-6 flex justify-between items-center gap-4">
           <div className="flex-1">
-            <p className="text-[11px] text-gray-500 font-bold uppercase mb-1">MÃ ĐẶT CHỖ CHÍNH THỨC</p>
-            <p className="text-xl font-bold text-gray-900 mb-3 tracking-wider text-green-800 font-mono">
+            <p className="text-[11px] text-stone-500 font-bold uppercase tracking-wider mb-1">MÃ ĐẶT CHỖ CHÍNH THỨC</p>
+            <p className="text-xl font-bold mb-3 tracking-wider text-[#14532d] font-mono">
               {bookingCode}
             </p>
 
-            <ul className="text-xs space-y-1.5 text-gray-600">
+            <ul className="text-xs space-y-1.5 text-stone-600">
               <li>
-                <span className="font-semibold text-gray-800">Khách hàng:</span> {name}
+                <span className="font-semibold text-stone-800">Khách hàng:</span> {name}
               </li>
               <li>
-                <span className="font-semibold text-gray-800">Vị trí:</span> Bàn {tableNumber} ({guests})
+                <span className="font-semibold text-stone-800">Vị trí:</span> Bàn {tableNumber} ({guests})
               </li>
               <li>
-                <span className="font-semibold text-gray-800">Thời gian:</span> {time}, {date}
+                <span className="font-semibold text-stone-800">Thời gian:</span> {time}, {date}
               </li>
               <li>
-                <span className="font-semibold text-gray-800">Thực đơn đặt trước:</span>{' '}
+                <span className="font-semibold text-stone-800">Thực đơn đặt trước:</span>{' '}
                 {totalItems > 0 ? (
-                  <span className="text-green-700 font-bold">
+                  <span className="text-[#d97706] font-bold">
                     {totalItems} món ({totalPrice.toLocaleString('vi-VN')}đ)
                   </span>
                 ) : (
-                  <span className="text-gray-500 italic">Gọi món tại bàn</span>
+                  <span className="text-stone-400 italic">Gọi món tại bàn</span>
                 )}
               </li>
               <li>
-                <span className="font-semibold text-gray-800">Địa chỉ:</span> SmaRes - Quận 1, TP.HCM
+                <span className="font-semibold text-stone-800">Địa chỉ:</span> SmaRes - Quận 1, TP.HCM
               </li>
             </ul>
           </div>
 
           {/* QR Code */}
-          <div className="hidden sm:flex flex-col items-center justify-center w-24 h-24 bg-white border border-gray-200 p-1.5 rounded-xl shadow-sm shrink-0">
+          <div className="hidden sm:flex flex-col items-center justify-center w-24 h-24 bg-white border border-[#ebe7df] p-1.5 rounded-xl shadow-xs shrink-0">
             <img src="/foods/QR.jpg" alt="Mã QR Đặt bàn" className="w-full h-full object-contain" />
           </div>
         </div>
@@ -72,26 +72,35 @@ export default function BookingSuccessPage() {
         <div className="grid grid-cols-2 gap-3 mb-4">
           <button
             onClick={() => window.print()}
-            className="py-2.5 border border-gray-300 rounded-xl text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5"
+            className="py-2.5 border border-[#d6d0c4] rounded-xl text-xs font-semibold text-stone-700 hover:bg-stone-50 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
           >
-            <span>🖨️</span> In / Lưu phiếu
+            <svg className="w-4 h-4 text-stone-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="6 9 6 2 18 2 18 9"></polyline>
+              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+              <rect x="6" y="14" width="12" height="8"></rect>
+            </svg>
+            <span>In / Lưu phiếu</span>
           </button>
           <button
             onClick={() => {
               navigator.clipboard?.writeText(bookingCode);
               alert('Đã sao chép mã đặt bàn: ' + bookingCode);
             }}
-            className="py-2.5 border border-gray-300 rounded-xl text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5"
+            className="py-2.5 border border-[#d6d0c4] rounded-xl text-xs font-semibold text-stone-700 hover:bg-stone-50 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
           >
-            <span>📋</span> Sao chép mã
+            <svg className="w-4 h-4 text-stone-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+              <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+            </svg>
+            <span>Sao chép mã</span>
           </button>
         </div>
 
         <Link
           href="/history"
-          className="interactive-btn block w-full bg-green-800 text-white font-bold py-3.5 rounded-xl hover:bg-green-900 transition-colors shadow-md text-sm"
+          className="block w-full bg-[#14532d] hover:bg-[#15803d] text-white font-semibold py-3.5 rounded-xl shadow-[0_8px_20px_-4px_rgba(20,83,45,0.4)] transition-all text-sm"
         >
-          Xem lịch sử đặt bàn & đơn hàng
+          Xem lịch sử đặt bàn &amp; đơn hàng
         </Link>
       </div>
     </main>
