@@ -45,7 +45,7 @@ export async function POST(request) {
     const body = await request.json();
     
     const newOrder = {
-      _id: "ORD" + Date.now(),
+      _id: body._id || "ORD" + Date.now(),
       ...body,
       status: body.status || "PENDING",
       createdAt: new Date().toISOString()
@@ -66,6 +66,37 @@ export async function POST(request) {
     return NextResponse.json({
       success: false,
       message: 'Lỗi server khi khởi tạo đơn hàng',
+      error: error.message
+    }, { status: 500 });
+  }
+}
+
+// 3. Phương thức PATCH: Đồng bộ trạng thái đơn hàng (TK-173)
+export async function PATCH(request) {
+  try {
+    const body = await request.json();
+    const { orderId, status } = body;
+
+    let updatedOrder = null;
+    for (let i = 0; i < memoryOrders.length; i++) {
+      if (memoryOrders[i]._id === orderId) {
+        memoryOrders[i].status = status;
+        updatedOrder = memoryOrders[i];
+        break;
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Đồng bộ trạng thái đơn hàng thành công',
+      order: updatedOrder || { _id: orderId, status }
+    }, { status: 200 });
+
+  } catch (error) {
+    console.error('Lỗi API PATCH /api/orders:', error);
+    return NextResponse.json({
+      success: false,
+      message: 'Lỗi cập nhật trạng thái',
       error: error.message
     }, { status: 500 });
   }
