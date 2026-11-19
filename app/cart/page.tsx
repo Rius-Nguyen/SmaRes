@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { useCart, type CartItem, type ItemCustomizations } from '@/app/context/CartContext';
+import { formatMoney } from '@/app/lib/format';
 
 interface UserProfile {
   id: string;
@@ -74,10 +75,6 @@ const INITIAL_QR_STATE: QrValidationState = {
   canOrder: false,
 };
 
-function formatCurrency(amount: number): string {
-  return `${amount.toLocaleString('vi-VN')}đ`;
-}
-
 function getCustomizationBadges(item: CartItem): { tags: string[]; allergyNote: string } {
   const c = item.customizations;
   if (!c) {
@@ -86,20 +83,23 @@ function getCustomizationBadges(item: CartItem): { tags: string[]; allergyNote: 
 
   const tags: string[] = [];
   const isDrinkOrDessert = item.category === 'Đồ uống' || item.category === 'Tráng miệng';
+  const spicyLevel = c.spicyLevel ?? c.spicy_level;
+  const iceLevel = c.iceLevel ?? c.ice_level;
+  const sweetnessLevel = c.sweetnessLevel ?? c.sweetness_level;
 
-  if (c.spicy_level) {
-    if (c.spicy_level !== 'NONE' || !isDrinkOrDessert) {
-      tags.push(`Độ cay: ${SPICY_LABELS[c.spicy_level]}`);
+  if (spicyLevel) {
+    if (spicyLevel !== 'NONE' || !isDrinkOrDessert) {
+      tags.push(`Độ cay: ${SPICY_LABELS[spicyLevel]}`);
     }
   }
-  if (c.ice_level) {
-    tags.push(`Đá: ${c.ice_level}`);
+  if (iceLevel) {
+    tags.push(`Đá: ${iceLevel}`);
   }
-  if (c.sweetness_level) {
-    tags.push(`Ngọt: ${c.sweetness_level}`);
+  if (sweetnessLevel) {
+    tags.push(`Ngọt: ${sweetnessLevel}`);
   }
 
-  const allergyNote = c.allergy_notes?.trim() ?? '';
+  const allergyNote = (c.allergyNotes ?? c.allergy_notes)?.trim() ?? '';
   return { tags, allergyNote };
 }
 
@@ -373,7 +373,7 @@ function CartContent() {
             <div className="pt-3 border-t border-[#ebe7df] flex items-center justify-between">
               <span className="font-semibold text-[#1c1917]">Tổng thanh toán</span>
               <span className="font-serif font-bold text-xl text-[#d97706]">
-                {formatCurrency(orderSuccess.totalAmount)}
+                {formatMoney(orderSuccess.totalAmount)}
               </span>
             </div>
           </div>
@@ -600,9 +600,10 @@ function CartContent() {
                   {cart.map((item, idx) => {
                     const { tags, allergyNote } = getCustomizationBadges(item);
                     const safeImageUrl = item.imageUrl?.trim() ? item.imageUrl : '/foods/pho_bo2.jpg';
+                    const itemKey = item.cartKey || item._id;
 
                     return (
-                      <li key={`${item._id}-${idx}`} className="py-6 first:pt-2 last:pb-2 flex items-start gap-4">
+                      <li key={item.cartKey || `${item._id}-${idx}`} className="py-6 first:pt-2 last:pb-2 flex items-start gap-4">
                         <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-xl border border-[#ebe7df] bg-[#f5f2eb]">
                           <Image
                             src={safeImageUrl}
@@ -620,11 +621,11 @@ function CartContent() {
                                 {item.name}
                               </h3>
                               <p className="text-xs text-[#78716c] mt-0.5">
-                                {formatCurrency(item.price)} / phần
+                                {formatMoney(item.price)} / phần
                               </p>
                             </div>
                             <p className="font-serif font-bold text-[#d97706] text-base sm:text-lg whitespace-nowrap">
-                              {formatCurrency(item.price * item.quantity)}
+                              {formatMoney(item.price * item.quantity)}
                             </p>
                           </div>
 
@@ -655,7 +656,7 @@ function CartContent() {
                             <div className="flex items-center border border-[#d6d0c4] rounded-lg overflow-hidden bg-white">
                               <button
                                 type="button"
-                                onClick={() => updateQuantity(item._id, item.quantity - 1)}
+                                onClick={() => updateQuantity(itemKey, item.quantity - 1)}
                                 aria-label={`Giảm số lượng ${item.name}`}
                                 className="px-3 py-1 text-[#57534e] hover:bg-[#f5f2eb] transition-colors text-sm font-semibold"
                               >
@@ -666,7 +667,7 @@ function CartContent() {
                               </span>
                               <button
                                 type="button"
-                                onClick={() => updateQuantity(item._id, item.quantity + 1)}
+                                onClick={() => updateQuantity(itemKey, item.quantity + 1)}
                                 aria-label={`Tăng số lượng ${item.name}`}
                                 className="px-3 py-1 text-[#57534e] hover:bg-[#f5f2eb] transition-colors text-sm font-semibold"
                               >
@@ -676,7 +677,7 @@ function CartContent() {
 
                             <button
                               type="button"
-                              onClick={() => removeFromCart(item._id)}
+                              onClick={() => removeFromCart(itemKey)}
                               className="text-xs font-semibold text-rose-600 hover:text-rose-800 transition-colors inline-flex items-center gap-1"
                             >
                               <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -746,14 +747,14 @@ function CartContent() {
                 </div>
                 <div className="flex justify-between">
                   <p>Tạm tính</p>
-                  <p className="font-semibold text-[#1c1917]">{formatCurrency(totalPrice)}</p>
+                  <p className="font-semibold text-[#1c1917]">{formatMoney(totalPrice)}</p>
                 </div>
               </div>
 
               <div className="flex justify-between items-baseline mb-6">
                 <p className="font-serif font-bold text-lg text-[#1c1917]">Tổng cộng</p>
                 <p className="font-serif font-bold text-2xl text-[#d97706]">
-                  {formatCurrency(totalPrice)}
+                  {formatMoney(totalPrice)}
                 </p>
               </div>
 

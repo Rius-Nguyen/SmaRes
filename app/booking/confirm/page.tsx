@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import BookingStepper from '@/components/BookingStepper';
 import { useCart } from '@/app/context/CartContext';
+import { formatMoney } from '@/app/lib/format';
 
 interface CreatedReservationSnapshot {
   slotKey: string;
@@ -113,10 +114,6 @@ export default function BookingConfirmPage() {
   const [errorActionTarget, setErrorActionTarget] = useState<'diagram' | 'menu' | null>(null);
 
   const guestsCount = normalizeGuests(bookingInfo?.guests);
-
-  const formatMoney = (val: number) => {
-    return val.toLocaleString('vi-VN') + 'đ';
-  };
 
   const handleFinalConfirm = async () => {
     if (!bookingInfo || !bookingInfo.tableNumber || !bookingInfo.date || !bookingInfo.time || !bookingInfo.phone) {
@@ -429,7 +426,7 @@ export default function BookingConfirmPage() {
               <div>
                 <div className="divide-y divide-[#ebe7df]">
                   {cart.map((item, idx) => (
-                    <div key={`${item._id}-${idx}`} className="py-4 flex items-center justify-between gap-4">
+                    <div key={item.cartKey || `${item._id}-${idx}`} className="py-4 flex items-center justify-between gap-4">
                       <div className="flex items-center gap-3.5">
                         <Image
                           src={item.imageUrl || '/foods/pho_bo.jpg'}
