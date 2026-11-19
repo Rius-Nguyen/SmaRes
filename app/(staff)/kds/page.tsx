@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import { useToast } from '@/components/ui/Toast';
 import {
   KDSOrder,
   KdsOrderStatus,
@@ -14,6 +15,26 @@ import {
 
 type FilterTab = 'ALL' | 'PENDING' | 'COOKING';
 type AuthState = 'ok' | 'unauthorized' | 'forbidden';
+type SseConnectionState = 'connecting' | 'live' | 'reconnecting';
+
+interface SseOrderEventPayload {
+  orderId?: string;
+  orderCode?: string;
+  tableNumber?: string;
+  status?: string;
+}
+
+function parseSseOrderPayload(rawData: string): SseOrderEventPayload | null {
+  try {
+    const parsed: unknown = JSON.parse(rawData);
+    if (typeof parsed !== 'object' || parsed === null) {
+      return null;
+    }
+    return parsed as SseOrderEventPayload;
+  } catch {
+    return null;
+  }
+}
 
 interface OrdersApiResponse {
   success: boolean;
@@ -42,44 +63,37 @@ function formatTableHeading(tableNumber?: string, tableId?: string): string {
 }
 
 export default function KDSPage() {
+  const { showToast } = useToast();
   const [orders, setOrders] = useState<KDSOrder[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [autoRefresh, setAutoRefresh] = useState<boolean>(true);
+  const [sseState, setSseState] = useState<SseConnectionState>('connecting');
+  const [sseReconnectNonce, setSseReconnectNonce] = useState<number>(0);
   const [activeFilter, setActiveFilter] = useState<FilterTab>('ALL');
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [authState, setAuthState] = useState<AuthState>('ok');
   const [mutatingOrderIds, setMutatingOrderIds] = useState<string[]>([]);
   const [lastSyncedTime, setLastSyncedTime] = useState<string>('');
   const [reloadNonce, setReloadNonce] = useState<number>(0);
 
-  // Refs for optimistic update & pending mutation guard across 10s polling
+  // Refs for optimistic update & pending mutation guard across SSE & fallback sync
   const inFlightOrderIdsRef = useRef<Map<string, number>>(new Map());
   const lastMutationAtRef = useRef<Record<string, number>>({});
   const ordersRef = useRef<KDSOrder[]>([]);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = useRef<boolean>(true);
+  const hasConnectedSseOnceRef = useRef<boolean>(false);
+  const sseSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     ordersRef.current = orders;
   }, [orders]);
 
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
-      if (toastTimerRef.current) {
-        clearTimeout(toastTimerRef.current);
-      }
+      isMountedRef.current = false;
     };
-  }, []);
-
-  const showToast = useCallback((message: string) => {
-    setToastMessage(message);
-    if (toastTimerRef.current) {
-      clearTimeout(toastTimerRef.current);
-    }
-    toastTimerRef.current = setTimeout(() => {
-      setToastMessage(null);
-    }, 3500);
   }, []);
 
   const beginOrderMutation = useCallback((orderId: string) => {
@@ -126,42 +140,64 @@ export default function KDSPage() {
     []
   );
 
-  // Tải danh sách đơn hàng thực từ API /api/orders và đồng bộ mỗi 10s
-  useEffect(() => {
-    let cancelled = false;
+  type OrdersFetchResult =
+    | { kind: 'ok'; orders: KDSOrder[]; fetchStartedAt: number }
+    | { kind: 'auth'; authState: 'unauthorized' | 'forbidden'; message: string }
+    | { kind: 'error'; message: string };
 
-    const loadOrders = async () => {
-      const fetchStartedAt = Date.now();
-      try {
-        const res = await fetch('/api/orders', {
-          method: 'GET',
-          cache: 'no-store',
-        });
+  const fetchOrdersSnapshot = useCallback(async (): Promise<OrdersFetchResult> => {
+    const fetchStartedAt = Date.now();
+    try {
+      const res = await fetch('/api/orders', {
+        method: 'GET',
+        cache: 'no-store',
+      });
 
-        if (cancelled) return;
-
-        if (res.status === 401 || res.status === 403) {
-          const errBody = (await res.json().catch(() => ({}))) as OrdersApiResponse;
-          setAuthState(res.status === 401 ? 'unauthorized' : 'forbidden');
-          setErrorBanner(
+      if (res.status === 401 || res.status === 403) {
+        const errBody = (await res.json().catch(() => ({}))) as OrdersApiResponse;
+        return {
+          kind: 'auth',
+          authState: res.status === 401 ? 'unauthorized' : 'forbidden',
+          message:
             errBody.message ||
-              (res.status === 401
-                ? 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập tài khoản Nhân viên / Bếp.'
-                : 'Tài khoản của bạn không có quyền truy cập màn hình Bếp KDS.')
-          );
-          return;
-        }
+            (res.status === 401
+              ? 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập tài khoản Nhân viên / Bếp.'
+              : 'Tài khoản của bạn không có quyền truy cập màn hình Bếp KDS.'),
+        };
+      }
 
-        const json = (await res.json()) as OrdersApiResponse;
-        if (!res.ok || !json.success || !Array.isArray(json.orders)) {
-          setErrorBanner(json.message || json.error || 'Không thể tải danh sách đơn hàng từ máy chủ.');
-          return;
-        }
+      const json = (await res.json()) as OrdersApiResponse;
+      if (!res.ok || !json.success || !Array.isArray(json.orders)) {
+        return {
+          kind: 'error',
+          message: json.message || json.error || 'Không thể tải danh sách đơn hàng từ máy chủ.',
+        };
+      }
 
+      return {
+        kind: 'ok',
+        orders: json.orders,
+        fetchStartedAt,
+      };
+    } catch {
+      return {
+        kind: 'error',
+        message: 'Không thể kết nối máy chủ để cập nhật đơn hàng KDS.',
+      };
+    }
+  }, []);
+
+  const applyOrdersSnapshot = useCallback(
+    (snapshot: OrdersFetchResult) => {
+      if (snapshot.kind === 'auth') {
+        setAuthState(snapshot.authState);
+        setErrorBanner(snapshot.message);
+      } else if (snapshot.kind === 'error') {
+        setErrorBanner(snapshot.message);
+      } else {
         setAuthState('ok');
         setErrorBanner(null);
-        const serverOrders = json.orders;
-        setOrders((prev) => mergePolledOrders(prev, serverOrders, fetchStartedAt));
+        setOrders((prev) => mergePolledOrders(prev, snapshot.orders, snapshot.fetchStartedAt));
         setLastSyncedTime(
           new Date().toLocaleTimeString('vi-VN', {
             hour: '2-digit',
@@ -169,35 +205,123 @@ export default function KDSPage() {
             second: '2-digit',
           })
         );
-      } catch {
-        if (!cancelled) {
-          setErrorBanner('Không thể kết nối máy chủ để cập nhật đơn hàng KDS.');
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-          setIsRefreshing(false);
-        }
+      }
+      setIsLoading(false);
+      setIsRefreshing(false);
+    },
+    [mergePolledOrders]
+  );
+
+  const loadOrders = useCallback(async () => {
+    const snapshot = await fetchOrdersSnapshot();
+    if (!isMountedRef.current) return;
+    applyOrdersSnapshot(snapshot);
+  }, [fetchOrdersSnapshot, applyOrdersSnapshot]);
+
+  // Tải danh sách đơn hàng ban đầu và khi người dùng bấm Làm mới
+  useEffect(() => {
+    let cancelled = false;
+    void fetchOrdersSnapshot().then((snapshot) => {
+      if (!cancelled) {
+        applyOrdersSnapshot(snapshot);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchOrdersSnapshot, applyOrdersSnapshot, reloadNonce]);
+
+  // Kết nối SSE thời gian thực (/api/realtime/events) với tự kết nối lại
+  useEffect(() => {
+    if (!autoRefresh || authState !== 'ok') {
+      return;
+    }
+
+    const eventSource = new EventSource('/api/realtime/events');
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleRealtimeSync = () => {
+      if (sseSyncTimerRef.current !== null) {
+        clearTimeout(sseSyncTimerRef.current);
+      }
+      sseSyncTimerRef.current = setTimeout(() => {
+        sseSyncTimerRef.current = null;
+        void loadOrders();
+      }, 150);
+    };
+
+    const handleOpen = () => {
+      setSseState('live');
+      if (hasConnectedSseOnceRef.current) {
+        void loadOrders();
+      } else {
+        hasConnectedSseOnceRef.current = true;
       }
     };
 
-    void loadOrders();
+    const handleError = () => {
+      setSseState('reconnecting');
+      if (eventSource.readyState === EventSource.CLOSED && reconnectTimer === null) {
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null;
+          setSseReconnectNonce((prev) => prev + 1);
+        }, 5000);
+      }
+    };
 
-    if (!autoRefresh) {
-      return () => {
-        cancelled = true;
-      };
-    }
+    const handleOrderCreated = (event: Event) => {
+      const rawData =
+        'data' in event && typeof (event as { data?: unknown }).data === 'string'
+          ? (event as { data: string }).data
+          : '';
+      const payload = rawData ? parseSseOrderPayload(rawData) : null;
+      const code =
+        payload?.orderCode ||
+        (payload?.orderId ? `#${payload.orderId.slice(-6).toUpperCase()}` : 'mới');
+      const tableLabel = formatTableHeading(payload?.tableNumber);
+      showToast(`Đơn mới ${code} (${tableLabel}) vừa được gửi vào bếp!`, 'info');
+      scheduleRealtimeSync();
+    };
 
-    const interval = setInterval(() => {
-      void loadOrders();
-    }, 10000);
+    const handleOrderStatusUpdated = () => {
+      scheduleRealtimeSync();
+    };
+
+    eventSource.addEventListener('open', handleOpen);
+    eventSource.addEventListener('error', handleError);
+    eventSource.addEventListener('ORDER_CREATED', handleOrderCreated);
+    eventSource.addEventListener('ORDER_STATUS_UPDATED', handleOrderStatusUpdated);
 
     return () => {
-      cancelled = true;
-      clearInterval(interval);
+      eventSource.removeEventListener('open', handleOpen);
+      eventSource.removeEventListener('error', handleError);
+      eventSource.removeEventListener('ORDER_CREATED', handleOrderCreated);
+      eventSource.removeEventListener('ORDER_STATUS_UPDATED', handleOrderStatusUpdated);
+      eventSource.close();
+      if (reconnectTimer !== null) {
+        clearTimeout(reconnectTimer);
+      }
+      if (sseSyncTimerRef.current !== null) {
+        clearTimeout(sseSyncTimerRef.current);
+        sseSyncTimerRef.current = null;
+      }
     };
-  }, [autoRefresh, reloadNonce, mergePolledOrders]);
+  }, [autoRefresh, authState, sseReconnectNonce, loadOrders, showToast]);
+
+  // Đồng bộ an toàn mỗi 60s chỉ khi SSE chưa ở trạng thái Live
+  useEffect(() => {
+    if (!autoRefresh || authState !== 'ok' || sseState === 'live') {
+      return;
+    }
+
+    const fallbackInterval = setInterval(() => {
+      void loadOrders();
+    }, 60000);
+
+    return () => {
+      clearInterval(fallbackInterval);
+    };
+  }, [autoRefresh, authState, sseState, loadOrders]);
 
   const handleManualRefresh = () => {
     setIsRefreshing(true);
@@ -279,7 +403,8 @@ export default function KDSPage() {
       }
 
       showToast(
-        `Đã cập nhật đơn ${displayCode} sang "${nextStatus === 'COOKING' ? 'Đang nấu' : 'Hoàn thành'}"`
+        `Đã cập nhật đơn ${displayCode} sang "${nextStatus === 'COOKING' ? 'Đang nấu' : 'Hoàn thành'}"`,
+        'success'
       );
     } catch (err: unknown) {
       // Rollback duy nhất đơn bị lỗi
@@ -401,33 +526,16 @@ export default function KDSPage() {
       );
     } else {
       showToast(
-        `Đã chuyển ${targetOrderIds.length} đơn chứa "${dish.dishName}" (${dish.totalQuantity} phần) sang ĐANG NẤU!`
+        `Đã chuyển ${targetOrderIds.length} đơn chứa "${dish.dishName}" (${dish.totalQuantity} phần) sang ĐANG NẤU!`,
+        'success'
       );
     }
   };
 
+  const isRealtimeLive = autoRefresh && authState === 'ok' && sseState === 'live';
+
   return (
     <main className="min-h-screen bg-[#1c1917] text-[#faf8f5] pb-20">
-      {/* Toast thông báo thành công */}
-      {toastMessage && (
-        <div className="fixed top-5 inset-x-4 max-w-md mx-auto z-50 animate-slideDown">
-          <div className="bg-[#14532d] text-white text-xs font-semibold px-4 py-3 rounded-2xl shadow-2xl border border-emerald-500/60 flex items-center gap-2.5">
-            <svg
-              className="w-4 h-4 text-[#fbbf24] shrink-0"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-            </svg>
-            <span className="flex-1">{toastMessage}</span>
-          </div>
-        </div>
-      )}
-
       {/* Top Header KDS */}
       <header className="bg-stone-950/95 backdrop-blur-md border-b border-stone-800 px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-30">
         <div className="flex items-center gap-3">
@@ -438,18 +546,29 @@ export default function KDSPage() {
             KDS
           </Link>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h1 className="font-serif font-bold text-base sm:text-lg text-[#faf8f5] leading-none">
                 Bếp SmaRes — Kitchen Display System
               </h1>
-              <span
-                className={`w-2.5 h-2.5 rounded-full ${
-                  autoRefresh ? 'bg-emerald-400 animate-pulse' : 'bg-stone-600'
-                }`}
-              />
+              {!autoRefresh ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-stone-800 text-stone-400 border border-stone-700">
+                  <span className="w-2 h-2 rounded-full bg-stone-500" />
+                  Đã tạm dừng
+                </span>
+              ) : isRealtimeLive ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#14532d]/70 text-emerald-300 border border-emerald-600/60">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  Live
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-950/70 text-amber-300 border border-[#d97706]/60">
+                  <span className="w-2 h-2 rounded-full bg-[#fbbf24] animate-pulse" />
+                  Đang kết nối lại
+                </span>
+              )}
             </div>
             <p className="text-[11px] text-stone-400 mt-1">
-              Điều phối chế biến theo thời gian thực
+              Điều phối chế biến theo thời gian thực (SSE)
               {lastSyncedTime ? ` • Đồng bộ lúc ${lastSyncedTime}` : ''}
             </p>
           </div>
@@ -482,7 +601,15 @@ export default function KDSPage() {
 
           <button
             type="button"
-            onClick={() => setAutoRefresh((v) => !v)}
+            onClick={() => {
+              setAutoRefresh((prev) => {
+                const next = !prev;
+                if (next) {
+                  setSseState('connecting');
+                }
+                return next;
+              });
+            }}
             className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 border transition-all cursor-pointer ${
               autoRefresh
                 ? 'bg-[#14532d]/60 border-emerald-600 text-emerald-200'
@@ -517,7 +644,7 @@ export default function KDSPage() {
               </svg>
             )}
             <span className="hidden sm:inline">
-              {autoRefresh ? 'Tự đồng bộ (10s)' : 'Đã tạm dừng'}
+              {autoRefresh ? 'Realtime SSE' : 'Đã tạm dừng'}
             </span>
           </button>
 
@@ -808,7 +935,7 @@ export default function KDSPage() {
                     Không có vé đơn nào trong mục này
                   </p>
                   <p className="text-xs text-stone-400">
-                    Đơn hàng mới từ khách tại bàn hoặc đặt trước sẽ tự động xuất hiện sau mỗi 10 giây.
+                    Đơn hàng mới từ khách tại bàn hoặc đặt trước sẽ tự động xuất hiện ngay lập tức qua kênh Realtime.
                   </p>
                 </div>
               ) : (
