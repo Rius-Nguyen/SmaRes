@@ -1,13 +1,21 @@
 import { Schema, model, models, Model, Document } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
+export const UserRole = {
+  CUSTOMER: 'customer',
+  STAFF: 'staff',
+  ADMIN: 'admin',
+} as const;
+
+export type UserRole = (typeof UserRole)[keyof typeof UserRole];
+
 export interface IUser extends Document {
   name: string;
   email: string;
+  username?: string;
   password: string;
   phone: string;
-  role: 'customer' | 'staff' | 'admin';
-  username?: string;
+  role: UserRole;
   createdAt: Date;
   updatedAt: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;
@@ -43,8 +51,8 @@ const UserSchema = new Schema<IUser>(
     },
     role: {
       type: String,
-      enum: ['customer', 'staff', 'admin'],
-      default: 'customer',
+      enum: Object.values(UserRole),
+      default: UserRole.CUSTOMER,
     },
   },
   {

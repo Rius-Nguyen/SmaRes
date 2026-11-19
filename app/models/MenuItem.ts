@@ -1,14 +1,22 @@
 import { Schema, model, models, Model } from 'mongoose';
 
+export const MenuCategory = {
+  APPETIZER: 'Khai vị',
+  MAIN: 'Món chính',
+  DRINK: 'Đồ uống',
+  DESSERT: 'Tráng miệng',
+} as const;
+
+export type MenuCategory = (typeof MenuCategory)[keyof typeof MenuCategory];
+
 export interface IMenuItem {
   _id?: string;
   name: string;
   price: number;
   description: string;
   imageUrl: string;
-  category: 'Khai vị' | 'Món chính' | 'Đồ uống' | 'Tráng miệng';
+  category: MenuCategory;
   isAvailable: boolean;
-  is_available?: boolean;
   isPreOrderOnly?: boolean;
   preparationNote?: string;
   createdAt?: Date;
@@ -41,7 +49,7 @@ const MenuItemSchema = new Schema<IMenuItem>(
       type: String,
       required: [true, 'Vui lòng chọn danh mục món ăn'],
       enum: {
-        values: ['Khai vị', 'Món chính', 'Đồ uống', 'Tráng miệng'],
+        values: Object.values(MenuCategory),
         message: '{VALUE} không phải là danh mục hợp lệ (Khai vị, Món chính, Đồ uống, Tráng miệng)',
       },
       trim: true,
@@ -49,10 +57,6 @@ const MenuItemSchema = new Schema<IMenuItem>(
     isAvailable: {
       type: Boolean,
       required: [true, 'Vui lòng thiết lập trạng thái món ăn'],
-      default: true,
-    },
-    is_available: {
-      type: Boolean,
       default: true,
     },
     isPreOrderOnly: {
