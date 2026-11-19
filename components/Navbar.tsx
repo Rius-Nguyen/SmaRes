@@ -12,39 +12,86 @@ export default function Navbar() {
   const router = useRouter();
   const { totalItems, hasActiveBooking } = useCart();
 
-  // Tự động kiểm tra trạng thái đăng nhập khi load trang hoặc khi có sự kiện đăng nhập/đăng xuất
+  // Tự động kiểm tra trạng thái đăng nhập qua HttpOnly cookie (/api/user/profile)
   useEffect(() => {
-    const checkSession = () => {
-      try {
-        const token = localStorage.getItem('token');
-        const storedUser = localStorage.getItem('user');
+    let isCancelled = false;
 
-        if (token && storedUser) {
-          const userData = JSON.parse(storedUser);
-          setUserName(userData.name || 'Người dùng');
-          setUserRole(userData.role || '');
-          setIsLoggedIn(true);
-        } else {
-          setIsLoggedIn(false);
-          setUserName('');
-          setUserRole('');
+    const applyLocalCache = () => {
+      try {
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+          const userData = JSON.parse(storedUser) as { name?: string; role?: string };
+          if (!isCancelled) {
+            setUserName(userData.name || 'Người dùng');
+            setUserRole(userData.role || '');
+            setIsLoggedIn(true);
+          }
+          return;
         }
       } catch {
+        // Ignore malformed local cache; server check below will reconcile
+      }
+      if (!isCancelled) {
         setIsLoggedIn(false);
         setUserName('');
         setUserRole('');
       }
     };
 
-    checkSession();
+    const checkSession = async () => {
+      applyLocalCache();
+
+      try {
+        const response = await fetch('/api/user/profile', {
+          method: 'GET',
+          cache: 'no-store',
+        });
+
+        if (isCancelled) return;
+
+        if (response.ok) {
+          const data = (await response.json()) as {
+            user?: { id?: string; name?: string; email?: string; role?: string };
+          };
+          if (data.user) {
+            const safeUser = {
+              id: data.user.id ?? '',
+              name: data.user.name ?? '',
+              email: data.user.email ?? '',
+              role: data.user.role ?? '',
+            };
+            localStorage.removeItem('token');
+            localStorage.setItem('user', JSON.stringify(safeUser));
+            setUserName(safeUser.name || 'Người dùng');
+            setUserRole(safeUser.role || '');
+            setIsLoggedIn(true);
+          }
+        } else if (response.status === 401) {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          setIsLoggedIn(false);
+          setUserName('');
+          setUserRole('');
+        }
+      } catch {
+        // Keep current cached state on transient network errors
+      }
+    };
+
+    const handleSessionSync = () => {
+      void checkSession();
+    };
+
+    void checkSession();
 
     // Lắng nghe sự kiện để đồng bộ tức thì giữa các component
-    window.addEventListener('storage', checkSession);
-    window.addEventListener('auth-change', checkSession);
+    window.addEventListener('storage', handleSessionSync);
+    window.addEventListener('auth-change', handleSessionSync);
 
     return () => {
-      window.removeEventListener('storage', checkSession);
-      window.removeEventListener('auth-change', checkSession);
+      isCancelled = true;
+      window.removeEventListener('storage', handleSessionSync);
+      window.removeEventListener('auth-change', handleSessionSync);
     };
   }, []);
 
