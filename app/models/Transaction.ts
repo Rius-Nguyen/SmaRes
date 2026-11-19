@@ -1,6 +1,6 @@
 import { Schema, model, models, Model, Types } from 'mongoose';
 
-export type PaymentProvider = 'VNPAY' | 'MOMO';
+export type PaymentProvider = 'VNPAY' | 'MOMO' | 'BANK_QR';
 export type TransactionStatus = 'PENDING' | 'SUCCESS' | 'FAILED' | 'EXPIRED';
 
 export interface ITransaction {
@@ -41,10 +41,10 @@ const TransactionSchema = new Schema<ITransaction>(
     provider: {
       type: String,
       enum: {
-        values: ['VNPAY', 'MOMO'],
+        values: ['VNPAY', 'MOMO', 'BANK_QR'],
         message: 'Cổng thanh toán không hợp lệ: {VALUE}',
       },
-      required: [true, 'Vui lòng chọn cổng thanh toán (VNPAY hoặc MOMO)'],
+      required: [true, 'Vui lòng chọn cổng thanh toán (VNPAY, MOMO hoặc BANK_QR)'],
     },
     status: {
       type: String,

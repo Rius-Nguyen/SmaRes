@@ -4,7 +4,15 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import BookingStepper from '@/components/BookingStepper';
+import DepositPaymentModal from '@/components/DepositPaymentModal';
 import { useCart } from '@/app/context/CartContext';
+
+interface SavedReservationState {
+  reservationId: string;
+  bookingCode: string;
+  tableNumber: string;
+  qr_token: string;
+}
 
 export default function BookingConfirmPage() {
   const router = useRouter();
@@ -19,20 +27,70 @@ export default function BookingConfirmPage() {
     hasSpecialItems,
   } = useCart();
 
+  const DEPOSIT_AMOUNT = 200000; // Tiền cọc giữ bàn cố định 200,000đ
+
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [savedReservation, setSavedReservation] = useState<SavedReservationState | null>(null);
+  const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
+  const [isProcessingDeposit, setIsProcessingDeposit] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const formatMoney = (val: number) => {
     return val.toLocaleString('vi-VN') + 'đ';
   };
 
-  const handleFinalConfirm = async () => {
+  // Bước 1: Gọi POST /api/reservations trước để lấy mã đặt bàn thật từ Database
+  const handleOpenDepositFlow = async () => {
     setIsSubmitting(true);
+    setErrorMessage('');
 
     try {
-      // Tạo mã đặt bàn ngẫu nhiên chuẩn SmaRes
-      const randomCode = 'SR-' + new Date().getFullYear() + '-' + Math.floor(1000 + Math.random() * 9000);
+      // Nếu đã có đơn được tạo trước đó trong phiên (ví dụ khách mở lại modal), tái sử dụng không tạo trùng
+      if (savedReservation) {
+        setIsDepositModalOpen(true);
+        setIsSubmitting(false);
+        return;
+      }
 
-      // Cập nhật mã booking vào context
+      const tableIdParam = bookingInfo?.tableId || bookingInfo?.tableNumber || 'B05';
+      const guestsCount =
+        typeof bookingInfo?.guests === 'string'
+          ? parseInt(bookingInfo.guests, 10) || 4
+          : Number(bookingInfo?.guests) || 4;
+
+      const res = await fetch('/api/reservations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tableId: tableIdParam,
+          date: bookingInfo?.date || new Date().toISOString().split('T')[0],
+          time: bookingInfo?.time || '19:00',
+          guests: guestsCount,
+          phone: bookingInfo?.phone || '0901234567',
+          note: bookingInfo?.note || '',
+        }),
+      });
+
+      const json = await res.json();
+
+      // Xử lý lỗi nghiệp vụ mượt mà (VD: 409 trùng lịch): không throw, không console.error để tránh lỗi overlay
+      if (!res.ok || !json.success) {
+        setErrorMessage(json.message || 'Bàn ăn hoặc khung giờ đã chọn hiện không khả dụng. Vui lòng chọn bàn khác.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      const resData = json.data;
+      const reservationState: SavedReservationState = {
+        reservationId: resData.id,
+        bookingCode: resData.bookingCode,
+        tableNumber: resData.tableNumber || tableIdParam,
+        qr_token: resData.qr_token || `TK-${resData.tableNumber || tableIdParam}-${resData.bookingCode.slice(-4)}`,
+      };
+
+      setSavedReservation(reservationState);
+
+      // Cập nhật thông tin đơn vào CartContext
       setBookingInfo((prev) => ({
         name: prev?.name || 'Khách hàng',
         phone: prev?.phone || '',
@@ -41,17 +99,70 @@ export default function BookingConfirmPage() {
         time: prev?.time || '',
         guests: prev?.guests || 4,
         note: prev?.note || '',
-        tableNumber: prev?.tableNumber || 'B05',
+        tableId: resData.tableId,
+        tableNumber: reservationState.tableNumber,
         tableType: prev?.tableType || 'Khu trung tâm',
         tableCapacity: prev?.tableCapacity || 4,
-        bookingCode: randomCode,
+        bookingCode: reservationState.bookingCode,
+        reservationId: reservationState.reservationId,
+        qr_token: reservationState.qr_token,
+        depositAmount: DEPOSIT_AMOUNT,
       }));
 
-      // Chuyển sang trang đặt bàn thành công
+      // Bước 2: Mở Modal thanh toán cọc với đúng bookingCode thật vừa nhận
+      setIsDepositModalOpen(true);
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Đã có lỗi xảy ra khi tạo đơn đặt bàn. Vui lòng thử lại hoặc chọn bàn khác.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Bước 3: Khi khách bấm "Tôi đã chuyển khoản xong" trong Modal
+  const handleConfirmDepositPayment = async () => {
+    if (!savedReservation) return;
+
+    setIsProcessingDeposit(true);
+    try {
+      // Gọi API POST /api/transactions tạo bản ghi giao dịch cọc
+      const res = await fetch('/api/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reservationId: savedReservation.reservationId,
+          amount: DEPOSIT_AMOUNT,
+          provider: 'BANK_QR',
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        console.warn('API transaction cảnh báo:', json.message);
+      }
+
+      // Cập nhật trạng thái paymentStatus trong context
+      setBookingInfo((prev) => ({
+        ...prev!,
+        paymentStatus: 'PENDING',
+        depositAmount: DEPOSIT_AMOUNT,
+      }));
+
+      setIsDepositModalOpen(false);
       router.push('/booking/success');
     } catch (err) {
-      console.error('Lỗi khi hoàn tất đặt bàn:', err);
-      setIsSubmitting(false);
+      console.error('Lỗi khi gửi thông tin cọc:', err);
+      // Vẫn cho phép điều hướng sang trang thành công nếu đã tạo reservation
+      router.push('/booking/success');
+    } finally {
+      setIsProcessingDeposit(false);
+    }
+  };
+
+  const handleCloseDepositModal = () => {
+    setIsDepositModalOpen(false);
+    // Nếu khách đóng modal sau khi đã tạo reservation thì chuyển sang trang thành công
+    if (savedReservation) {
+      router.push('/booking/success');
     }
   };
 
@@ -282,6 +393,33 @@ export default function BookingConfirmPage() {
             </ul>
           </div>
 
+          {/* THÔNG BÁO LỖI NGHIỆP VỤ (VÍ DỤ TRÙNG BÀN 409) */}
+          {errorMessage && (
+            <div className="p-4 sm:p-5 bg-[#fffbeb] border border-[#fde68a] rounded-2xl text-[#92400e] text-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs animate-fade-in">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-[#fef3c7] text-[#d97706] flex items-center justify-center shrink-0 border border-[#fde68a]">
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                  </svg>
+                </div>
+                <div>
+                  <p className="font-bold text-stone-900 text-sm sm:text-base">{errorMessage}</p>
+                  <p className="text-xs text-stone-600 mt-0.5">
+                    Khung giờ này đã có khách giữ chỗ trước. Quý khách vui lòng chọn bàn khác trên sơ đồ hoặc đổi khung giờ.
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/booking/diagram"
+                className="px-4 py-2.5 bg-[#14532d] hover:bg-[#15803d] text-white rounded-xl text-xs sm:text-sm font-semibold shrink-0 transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap self-end sm:self-center"
+              >
+                <span>← Chọn bàn khác</span>
+              </Link>
+            </div>
+          )}
+
           {/* NÚT HOÀN TẤT ĐẶT BÀN */}
           <div className="pt-3 flex flex-col sm:flex-row items-center gap-4">
             <Link
@@ -292,15 +430,15 @@ export default function BookingConfirmPage() {
             </Link>
 
             <button
-              onClick={handleFinalConfirm}
+              onClick={handleOpenDepositFlow}
               disabled={isSubmitting}
-              className="flex-1 w-full bg-[#14532d] hover:bg-[#15803d] text-white font-semibold py-4 rounded-xl shadow-[0_8px_24px_-4px_rgba(20,83,45,0.45)] hover:shadow-[0_12px_28px_-4px_rgba(20,83,45,0.6)] text-base sm:text-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="flex-1 w-full bg-[#14532d] hover:bg-[#15803d] text-white font-semibold py-4 rounded-xl shadow-[0_8px_24px_-4px_rgba(20,83,45,0.45)] hover:shadow-[0_12px_28px_-4px_rgba(20,83,45,0.6)] text-base sm:text-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
             >
               {isSubmitting ? (
-                <span>Đang xử lý đặt bàn...</span>
+                <span>Đang xử lý tạo đơn đặt bàn...</span>
               ) : (
                 <>
-                  <span>Xác Nhận &amp; Hoàn Tất Đặt Bàn Ngay</span>
+                  <span>Xác Nhận &amp; Thanh Toán Cọc Giữ Bàn</span>
                   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <polyline points="20 6 9 17 4 12"></polyline>
                   </svg>
@@ -310,6 +448,16 @@ export default function BookingConfirmPage() {
           </div>
         </div>
       </div>
+
+      {/* MODAL THANH TOÁN TIỀN CỌC (BANK QR) */}
+      <DepositPaymentModal
+        isOpen={isDepositModalOpen}
+        onClose={handleCloseDepositModal}
+        bookingCode={savedReservation?.bookingCode || bookingInfo?.bookingCode || ''}
+        depositAmount={DEPOSIT_AMOUNT}
+        onConfirmPayment={handleConfirmDepositPayment}
+        isProcessing={isProcessingDeposit}
+      />
     </main>
   );
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Types } from 'mongoose';
+import crypto from 'crypto';
 import connectDB from '@/app/lib/db';
 import Transaction from '@/app/models/Transaction';
 import Reservation from '@/app/models/Reservation';
@@ -133,6 +134,115 @@ export async function GET(request: NextRequest) {
       {
         success: false,
         message: 'Lỗi hệ thống khi tải danh sách giao dịch.',
+        error: error instanceof Error ? error.message : 'INTERNAL_SERVER_ERROR',
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    await connectDB();
+
+    const body = await request.json().catch(() => ({}));
+    const { reservationId, amount, provider = 'BANK_QR', userId } = body;
+
+    if (!reservationId) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Vui lòng cung cấp reservationId của đơn đặt bàn.',
+          error: 'MISSING_RESERVATION_ID',
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!amount || typeof amount !== 'number' || amount <= 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Vui lòng cung cấp số tiền đặt cọc hợp lệ (lớn hơn 0).',
+          error: 'INVALID_AMOUNT',
+        },
+        { status: 400 }
+      );
+    }
+
+    // 1. Tìm đơn đặt bàn tương ứng (theo ObjectId hoặc bookingCode)
+    let reservation = null;
+    if (Types.ObjectId.isValid(reservationId)) {
+      reservation = await Reservation.findById(reservationId);
+    }
+    if (!reservation) {
+      reservation = await Reservation.findOne({
+        bookingCode: String(reservationId).trim(),
+      });
+    }
+
+    if (!reservation) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Không tìm thấy thông tin đơn đặt bàn tương ứng.',
+          error: 'RESERVATION_NOT_FOUND',
+        },
+        { status: 404 }
+      );
+    }
+
+    // 2. Tạo mã transactionRef duy nhất
+    const randomHex = crypto.randomBytes(3).toString('hex').toUpperCase();
+    const transactionRef = `TXN_DEP_${Date.now()}_${randomHex}`;
+
+    // 3. Thời gian hết hạn thanh toán cọc là 10 phút
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    // 4. Tạo bản ghi Transaction
+    const validProvider = ['VNPAY', 'MOMO', 'BANK_QR'].includes(String(provider).toUpperCase())
+      ? (String(provider).toUpperCase() as 'VNPAY' | 'MOMO' | 'BANK_QR')
+      : 'BANK_QR';
+
+    const newTransaction = await Transaction.create({
+      reservationId: reservation._id,
+      userId: userId && Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : reservation.userId || null,
+      amount: amount,
+      provider: validProvider,
+      status: 'PENDING',
+      transactionRef: transactionRef,
+      expiresAt: expiresAt,
+    });
+
+    // 5. Cập nhật Reservation: depositAmount, paymentStatus = 'PENDING', holdExpiresAt = expiresAt
+    reservation.depositAmount = amount;
+    reservation.paymentStatus = 'PENDING';
+    reservation.holdExpiresAt = expiresAt;
+    await reservation.save();
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: 'Tạo giao dịch đặt cọc thành công.',
+        data: {
+          id: newTransaction._id,
+          reservationId: newTransaction.reservationId,
+          amount: newTransaction.amount,
+          provider: newTransaction.provider,
+          status: newTransaction.status,
+          transactionRef: newTransaction.transactionRef,
+          expiresAt: newTransaction.expiresAt,
+          createdAt: newTransaction.createdAt,
+        },
+      },
+      { status: 201 }
+    );
+  } catch (error) {
+    console.error('Lỗi khi tạo giao dịch đặt cọc:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        message: 'Lỗi hệ thống khi tạo giao dịch đặt cọc.',
         error: error instanceof Error ? error.message : 'INTERNAL_SERVER_ERROR',
       },
       { status: 500 }

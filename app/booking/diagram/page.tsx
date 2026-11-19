@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import BookingStepper from '@/components/BookingStepper';
@@ -159,6 +159,10 @@ export default function BookingDiagramPage() {
   const router = useRouter();
   const { bookingInfo, setBookingInfo } = useCart();
 
+  // Khởi tạo danh sách bàn động từ TABLES_DATA
+  const [liveTables, setLiveTables] = useState<TableItem[]>(TABLES_DATA);
+  const [isLoadingAvailability, setIsLoadingAvailability] = useState<boolean>(true);
+
   // Khởi tạo bàn đã chọn (ưu tiên thông tin đã lưu, hoặc mặc định V02 hoặc B05)
   const [selectedTableId, setSelectedTableId] = useState<string>(
     bookingInfo?.tableNumber || 'V02'
@@ -166,8 +170,72 @@ export default function BookingDiagramPage() {
 
   const [previewImageModal, setPreviewImageModal] = useState<boolean>(false);
 
+  // Đồng bộ trạng thái bàn đã đặt theo ngày giờ thực tế từ API /api/tables/availability (TK-125)
+  useEffect(() => {
+    let isMounted = true;
+    const fetchAvailability = async () => {
+      setIsLoadingAvailability(true);
+      const date = bookingInfo?.date || '2026-10-25';
+      const time = bookingInfo?.time || '19:00';
+
+      try {
+        const res = await fetch(
+          `/api/tables/availability?date=${encodeURIComponent(date)}&time=${encodeURIComponent(time)}`,
+          { cache: 'no-store' }
+        );
+        const json = await res.json();
+
+        if (json.success && isMounted) {
+          const bookedSet = new Set<string>(
+            (json.bookedTableNumbers || []).map((n: string) => String(n).trim().toUpperCase())
+          );
+
+          if (Array.isArray(json.tables)) {
+            json.tables.forEach((t: any) => {
+              if (t.isAvailable === false && t.tableNumber) {
+                bookedSet.add(String(t.tableNumber).trim().toUpperCase());
+              }
+            });
+          }
+
+          setLiveTables((prev) => {
+            const updated = prev.map((item) => {
+              const isOccupied =
+                bookedSet.has(item.id.toUpperCase()) || bookedSet.has(item.name.toUpperCase());
+              return {
+                ...item,
+                status: isOccupied ? ('occupied' as const) : item.status,
+              };
+            });
+
+            // Nếu bàn hiện tại đang được chọn mà bị trùng (đã đặt), tự động chọn bàn trống đầu tiên
+            const currentSelected = updated.find((t) => t.id === selectedTableId);
+            if (currentSelected && currentSelected.status !== 'available') {
+              const firstAvail = updated.find((t) => t.status === 'available');
+              if (firstAvail) {
+                setSelectedTableId(firstAvail.id);
+              }
+            }
+
+            return updated;
+          });
+        }
+      } catch (err) {
+        console.error('Lỗi khi tải tình trạng bàn trống:', err);
+      } finally {
+        if (isMounted) setIsLoadingAvailability(false);
+      }
+    };
+
+    fetchAvailability();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [bookingInfo?.date, bookingInfo?.time]);
+
   const selectedTable =
-    TABLES_DATA.find((t) => t.id === selectedTableId) || TABLES_DATA[1]; // fallback V02
+    liveTables.find((t) => t.id === selectedTableId) || liveTables[1] || TABLES_DATA[1];
 
   const handleSelectTable = (table: TableItem) => {
     if (table.status !== 'available') return;
@@ -223,7 +291,9 @@ export default function BookingDiagramPage() {
           <div className="flex flex-wrap items-center justify-between border-b border-[#ebe7df] pb-6 mb-8 gap-4">
             <div>
               <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#14532d]">Không gian nhà hàng SmaRes</h2>
-              <p className="text-xs sm:text-sm text-stone-500 mt-1">Nhấp vào bàn màu xanh để xem ảnh thực tế &amp; view bàn</p>
+              <p className="text-xs sm:text-sm text-stone-500 mt-1">
+                Tình trạng bàn ngày <strong className="text-stone-800">{bookingInfo?.date || '2026-10-25'}</strong> lúc <strong className="text-stone-800">{bookingInfo?.time || '19:00'}</strong> (Nhấp vào bàn xanh để chọn)
+              </p>
             </div>
             <div className="flex flex-wrap gap-4 text-xs sm:text-sm font-semibold">
               <div className="flex items-center gap-2">
@@ -255,7 +325,7 @@ export default function BookingDiagramPage() {
               </span>
             </div>
             <div className="flex flex-wrap gap-5">
-              {TABLES_DATA.filter((t) => t.zone === 'VIP').map((table) => {
+              {liveTables.filter((t) => t.zone === 'VIP').map((table) => {
                 const isSelected = selectedTableId === table.id;
                 const isAvailable = table.status === 'available';
 
@@ -303,7 +373,7 @@ export default function BookingDiagramPage() {
               </span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              {TABLES_DATA.filter((t) => t.zone === 'Trung tâm').map((table) => {
+              {liveTables.filter((t) => t.zone === 'Trung tâm').map((table) => {
                 const isSelected = selectedTableId === table.id;
                 const isAvailable = table.status === 'available';
 
@@ -353,7 +423,7 @@ export default function BookingDiagramPage() {
               </span>
             </div>
             <div className="flex flex-wrap gap-4">
-              {TABLES_DATA.filter((t) => t.zone === 'Cửa sổ').map((table) => {
+              {liveTables.filter((t) => t.zone === 'Cửa sổ').map((table) => {
                 const isSelected = selectedTableId === table.id;
                 const isAvailable = table.status === 'available';
 

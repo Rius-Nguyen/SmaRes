@@ -7,6 +7,7 @@ export interface IReservation {
   _id?: Types.ObjectId | string;
   userId?: Types.ObjectId | string | null;
   tableId: Types.ObjectId | string;
+  tableNumber?: string;
 
   // Thời gian & Thông tin liên hệ (hỗ trợ cả chuẩn camelCase và legacy API fields)
   reservationDate?: Date;
@@ -44,6 +45,10 @@ const ReservationSchema = new Schema<IReservation>(
       ref: 'Table',
       required: [true, 'Vui lòng cung cấp ID bàn'],
       index: true,
+    },
+    tableNumber: {
+      type: String,
+      trim: true,
     },
     reservationDate: {
       type: Date,

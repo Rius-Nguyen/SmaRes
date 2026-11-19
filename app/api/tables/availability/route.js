@@ -1,79 +1,91 @@
 import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import connectDB from '@/app/lib/db';
+import Table from '@/app/models/Table';
+import Reservation from '@/app/models/Reservation';
 
-// 1. Khai báo Schema Table & Reservation
-const tableSchema = new mongoose.Schema({
-    tableNumber: { type: Number, required: true, unique: true },
-    capacity: { type: Number, required: true },
-    location: { type: String, default: 'Indoor' }
-});
+export const dynamic = 'force-dynamic';
 
-const reservationSchema = new mongoose.Schema({
-    tableId: { type: mongoose.Schema.Types.ObjectId, ref: 'Table', required: true },
-    date: { type: String, required: true }, // Định dạng: YYYY-MM-DD
-    time: { type: String, required: true }, // Định dạng: HH:mm
-    status: { type: String, default: 'confirmed' } // 'confirmed', 'cancelled', 'completed'
-});
-
-const Table = mongoose.models.Table || mongoose.model('Table', tableSchema);
-const Reservation = mongoose.models.Reservation || mongoose.model('Reservation', reservationSchema);
-
-// 3. Xử lý GET request kiểm tra bàn trống
+// Xử lý GET request kiểm tra bàn trống thời gian thực (TK-125)
 export async function GET(request) {
-    try {
-        await connectDB();
+  try {
+    await connectDB();
 
-        // Đọc Query Params từ URL (VD: ?date=2026-10-01&time=18:00&guests=4)
-        const { searchParams } = new URL(request.url);
-        const date = searchParams.get('date');
-        const time = searchParams.get('time');
-        const guests = parseInt(searchParams.get('guests')) || 1;
+    // Đọc Query Params từ URL (VD: ?date=2026-10-25&time=19:00&guests=4)
+    const { searchParams } = new URL(request.url);
+    const date = searchParams.get('date');
+    const time = searchParams.get('time');
+    const guests = parseInt(searchParams.get('guests') || '1', 10);
 
-        // Validate dữ liệu truyền vào
-        if (!date || !time) {
-            return NextResponse.json(
-                { success: false, message: "Vui lòng cung cấp đầy đủ tham số ?date=YYYY-MM-DD&time=HH:mm" },
-                { status: 400 }
-            );
-        }
-
-        // Lấy tất cả các bàn đáp ứng đủ sức chứa số lượng khách
-        const tables = await Table.find({ capacity: { $gte: guests } });
-
-        // Tìm các đơn đặt bàn trùng ngày, trùng giờ và trạng thái không phải hủy ('cancelled')
-        const bookedReservations = await Reservation.find({
-            date: date,
-            time: time,
-            status: { $ne: 'cancelled' }
-        });
-
-        // Tạo mảng danh sách ID của các bàn đã bị đặt
-        const bookedTableIds = bookedReservations.map(res => res.tableId.toString());
-
-        // Ghép thêm trường isAvailable: true/false cho từng bàn
-        const availabilityList = tables.map(table => {
-            const isBooked = bookedTableIds.includes(table._id.toString());
-            return {
-                id: table._id,
-                tableNumber: table.tableNumber,
-                capacity: table.capacity,
-                location: table.location,
-                isAvailable: !isBooked // true nếu chưa bị đặt, false nếu đã bị đặt
-            };
-        });
-
-        return NextResponse.json({
-            success: true,
-            query: { date, time, guests },
-            tables: availabilityList
-        }, { status: 200 });
-
-    } catch (error) {
-        console.error("Lỗi khi kiểm tra bàn trống:", error);
-        return NextResponse.json(
-            { success: false, message: "Lỗi hệ thống server." },
-            { status: 500 }
-        );
+    // Validate dữ liệu truyền vào
+    if (!date || !time) {
+      return NextResponse.json(
+        { success: false, message: 'Vui lòng cung cấp đầy đủ tham số ?date=YYYY-MM-DD&time=HH:mm' },
+        { status: 400 }
+      );
     }
+
+    const cleanDate = date.trim();
+    const cleanTime = time.trim();
+
+    // 1. Tìm các đơn đặt bàn trùng ngày, giờ và trạng thái không phải hủy ('cancelled')
+    const bookedReservations = await Reservation.find({
+      $or: [
+        { date: cleanDate, time: cleanTime },
+        { date: cleanDate, timeSlot: cleanTime }
+      ],
+      status: { $ne: 'cancelled' }
+    }).lean();
+
+    // 2. Thu thập danh sách ID và số bàn đã bị đặt
+    const bookedTableIds = new Set();
+    const bookedTableNumbers = new Set();
+
+    bookedReservations.forEach((r) => {
+      if (r.tableId) bookedTableIds.add(r.tableId.toString());
+      if (r.tableNumber) bookedTableNumbers.add(String(r.tableNumber).trim().toUpperCase());
+      if (r.table_number) bookedTableNumbers.add(String(r.table_number).trim().toUpperCase());
+    });
+
+    // 3. Lấy tất cả các bàn trong cơ sở dữ liệu
+    const tables = await Table.find({}).lean();
+
+    // 4. Đồng bộ danh sách bàn và cờ isAvailable
+    const availabilityList = tables.map((table) => {
+      const tNum = String(table.tableNumber || table.table_number || '').trim().toUpperCase();
+      const isBooked =
+        bookedTableIds.has(table._id.toString()) ||
+        (tNum && bookedTableNumbers.has(tNum));
+
+      return {
+        id: table._id.toString(),
+        tableNumber: table.tableNumber || table.table_number,
+        capacity: table.capacity,
+        zone_name: table.zone_name || 'Khu vực chính',
+        status: isBooked ? 'occupied' : (table.status === 'occupied' ? 'occupied' : 'available'),
+        isAvailable: !isBooked && table.status !== 'occupied'
+      };
+    });
+
+    return NextResponse.json(
+      {
+        success: true,
+        query: { date: cleanDate, time: cleanTime, guests },
+        bookedTableNumbers: Array.from(bookedTableNumbers),
+        tables: availabilityList
+      },
+      {
+        status: 200,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
+        }
+      }
+    );
+  } catch (error) {
+    console.error('Lỗi khi kiểm tra bàn trống:', error);
+    return NextResponse.json(
+      { success: false, message: 'Lỗi hệ thống server khi kiểm tra tình trạng bàn.' },
+      { status: 500 }
+    );
+  }
 }
