@@ -1,45 +1,43 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/app/lib/db';
-import MenuItem from '@/app/models/MenuItem';
+import MenuItem, { MenuCategory } from '@/app/models/MenuItem';
 import { INITIAL_MENU_ITEMS } from '@/app/lib/menuInitialData';
 
-export async function GET(request: Request) {
+const VALID_CATEGORIES: readonly string[] = Object.values(MenuCategory);
+
+function isMenuCategory(value: string): value is MenuCategory {
+  return VALID_CATEGORIES.includes(value);
+}
+
+export async function GET(request: NextRequest) {
   try {
-    // 1. Kết nối cơ sở dữ liệu MongoDB
     await connectDB();
 
-    // 2. Lấy query params ?category=... từ URL
     const { searchParams } = new URL(request.url);
-    const category = searchParams.get('category');
+    const rawCategory = searchParams.get('category')?.trim() ?? '';
 
-    // 3. Xây dựng điều kiện lọc trực tiếp từ Database
-    const filterQuery: Record<string, unknown> = {};
-    if (category && category !== 'Tất cả') {
-      filterQuery.category = category.trim();
+    const totalCount = await MenuItem.countDocuments();
+    if (totalCount === 0) {
+      await MenuItem.insertMany(INITIAL_MENU_ITEMS);
     }
 
-    // 4. Truy vấn trực tiếp từ MongoDB (sắp xếp món theo createdAt hoặc thứ tự)
-    let menuItems = await MenuItem.find(filterQuery).sort({ createdAt: 1 });
-
-    // Nếu database chưa có món nào, tự động seed từ INITIAL_MENU_ITEMS
-    if (!menuItems || menuItems.length === 0) {
-      if (!category || category === 'Tất cả') {
-        await MenuItem.insertMany(INITIAL_MENU_ITEMS);
-        menuItems = await MenuItem.find({}).sort({ createdAt: 1 });
-      } else {
-        const matched = INITIAL_MENU_ITEMS.filter((i) => i.category === category);
+    const filterQuery: { category?: MenuCategory } = {};
+    if (rawCategory && rawCategory !== 'Tất cả') {
+      if (!isMenuCategory(rawCategory)) {
         return NextResponse.json(
           {
             success: true,
-            count: matched.length,
-            data: matched,
+            count: 0,
+            data: [],
           },
           { status: 200 }
         );
       }
+      filterQuery.category = rawCategory;
     }
 
-    // 5. Trả về kết quả JSON từ Database
+    const menuItems = await MenuItem.find(filterQuery).sort({ createdAt: 1 }).lean();
+
     return NextResponse.json(
       {
         success: true,
@@ -51,11 +49,11 @@ export async function GET(request: Request) {
   } catch (error: unknown) {
     console.error('Lỗi khi lấy danh sách thực đơn từ DB, trả về fallback:', error);
     const { searchParams } = new URL(request.url);
-    const category = searchParams.get('category');
+    const rawCategory = searchParams.get('category')?.trim() ?? '';
 
     const fallbackData =
-      category && category !== 'Tất cả'
-        ? INITIAL_MENU_ITEMS.filter((i) => i.category === category)
+      rawCategory && rawCategory !== 'Tất cả'
+        ? INITIAL_MENU_ITEMS.filter((item) => item.category === rawCategory)
         : INITIAL_MENU_ITEMS;
 
     return NextResponse.json(
@@ -68,4 +66,3 @@ export async function GET(request: Request) {
     );
   }
 }
-
