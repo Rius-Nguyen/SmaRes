@@ -2,16 +2,96 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import BookingStepper from '@/components/BookingStepper';
-import DepositPaymentModal from '@/components/DepositPaymentModal';
 import { useCart } from '@/app/context/CartContext';
+import { formatMoney } from '@/app/lib/format';
 
-interface SavedReservationState {
-  reservationId: string;
+interface CreatedReservationSnapshot {
+  slotKey: string;
   bookingCode: string;
+  tableId: string;
   tableNumber: string;
-  qr_token: string;
+  date: string;
+  time: string;
+  guests: number;
+  name: string;
+  phone: string;
+}
+
+interface ReservationApiResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    id: string;
+    bookingCode: string;
+    tableId: string;
+    tableNumber: string;
+    customerName: string;
+    date: string;
+    time: string;
+    guests: number;
+    phone: string;
+    note?: string;
+  };
+}
+
+interface OrderApiResponse {
+  success: boolean;
+  message?: string;
+  orderId?: string;
+  orderCode?: string;
+  totalAmount?: number;
+}
+
+const PENDING_RESERVATION_KEY = 'smares_pending_reservation';
+
+function normalizeGuests(value: string | number | undefined): number {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 1) {
+    return Math.floor(value);
+  }
+  if (typeof value === 'string') {
+    const match = value.match(/\d+/);
+    if (match) {
+      const parsed = Number.parseInt(match[0], 10);
+      if (Number.isFinite(parsed) && parsed >= 1) {
+        return parsed;
+      }
+    }
+  }
+  return 4;
+}
+
+function readPendingReservation(expectedSlotKey: string): CreatedReservationSnapshot | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(PENDING_RESERVATION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (typeof parsed !== 'object' || parsed === null) return null;
+    const rec = parsed as Partial<CreatedReservationSnapshot>;
+    if (
+      rec.slotKey === expectedSlotKey &&
+      typeof rec.bookingCode === 'string' &&
+      rec.bookingCode
+    ) {
+      return {
+        slotKey: rec.slotKey,
+        bookingCode: rec.bookingCode,
+        tableId: typeof rec.tableId === 'string' ? rec.tableId : '',
+        tableNumber: typeof rec.tableNumber === 'string' ? rec.tableNumber : '',
+        date: typeof rec.date === 'string' ? rec.date : '',
+        time: typeof rec.time === 'string' ? rec.time : '',
+        guests: typeof rec.guests === 'number' ? rec.guests : 4,
+        name: typeof rec.name === 'string' ? rec.name : '',
+        phone: typeof rec.phone === 'string' ? rec.phone : '',
+      };
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 export default function BookingConfirmPage() {
@@ -21,152 +101,164 @@ export default function BookingConfirmPage() {
     totalItems,
     totalPrice,
     bookingInfo,
-    setBookingInfo,
+    clearCart,
+    clearBookingInfo,
     hasActiveBooking,
     isLoaded,
     hasSpecialItems,
   } = useCart();
 
-  const DEPOSIT_AMOUNT = 200000; // Tiền cọc giữ bàn cố định 200,000đ
-
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [savedReservation, setSavedReservation] = useState<SavedReservationState | null>(null);
-  const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
-  const [isProcessingDeposit, setIsProcessingDeposit] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [isRedirecting, setIsRedirecting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [errorActionTarget, setErrorActionTarget] = useState<'diagram' | 'menu' | null>(null);
 
-  const formatMoney = (val: number) => {
-    return val.toLocaleString('vi-VN') + 'đ';
-  };
+  const guestsCount = normalizeGuests(bookingInfo?.guests);
 
-  // Bước 1: Gọi POST /api/reservations trước để lấy mã đặt bàn thật từ Database
-  const handleOpenDepositFlow = async () => {
+  const handleFinalConfirm = async () => {
+    if (!bookingInfo || !bookingInfo.tableNumber || !bookingInfo.date || !bookingInfo.time || !bookingInfo.phone) {
+      setErrorMsg('Thiếu thông tin đặt bàn bắt buộc. Vui lòng kiểm tra lại từ Bước 1.');
+      return;
+    }
+
     setIsSubmitting(true);
-    setErrorMessage('');
+    setErrorMsg('');
+    setErrorActionTarget(null);
+
+    let selectedTableId: string | undefined;
+    try {
+      const storedId = sessionStorage.getItem('smares_selected_table_id');
+      if (storedId && storedId.trim()) {
+        selectedTableId = storedId.trim();
+      }
+    } catch {
+      selectedTableId = undefined;
+    }
+
+    const slotKey = `${selectedTableId || bookingInfo.tableNumber}|${bookingInfo.date}|${bookingInfo.time}|${bookingInfo.phone}`;
 
     try {
-      // Nếu đã có đơn được tạo trước đó trong phiên (ví dụ khách mở lại modal), tái sử dụng không tạo trùng
-      if (savedReservation) {
-        setIsDepositModalOpen(true);
-        setIsSubmitting(false);
-        return;
+      let reservationSnapshot = readPendingReservation(slotKey);
+
+      if (!reservationSnapshot) {
+        const resResponse = await fetch('/api/reservations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tableId: selectedTableId,
+            tableNumber: bookingInfo.tableNumber,
+            date: bookingInfo.date,
+            time: bookingInfo.time,
+            guests: Number(guestsCount),
+            phone: bookingInfo.phone,
+            customerName: bookingInfo.name,
+            note: bookingInfo.note || '',
+          }),
+        });
+
+        const resData = (await resResponse.json()) as ReservationApiResponse;
+
+        if (!resResponse.ok || !resData.success || !resData.data) {
+          setErrorActionTarget('diagram');
+          if (resResponse.status === 409) {
+            setErrorMsg(
+              resData.message ||
+                'Bàn và khung giờ này vừa có khách đặt trước. Vui lòng chọn bàn khác hoặc đổi giờ.'
+            );
+          } else {
+            setErrorMsg(
+              resData.message || 'Không thể hoàn tất đặt bàn. Vui lòng kiểm tra lại thông tin.'
+            );
+          }
+          setIsSubmitting(false);
+          return;
+        }
+
+        reservationSnapshot = {
+          slotKey,
+          bookingCode: resData.data.bookingCode,
+          tableId: String(resData.data.tableId || selectedTableId || ''),
+          tableNumber: resData.data.tableNumber || bookingInfo.tableNumber,
+          date: resData.data.date || bookingInfo.date,
+          time: resData.data.time || bookingInfo.time,
+          guests: resData.data.guests ?? guestsCount,
+          name: resData.data.customerName || bookingInfo.name,
+          phone: resData.data.phone || bookingInfo.phone,
+        };
       }
 
-      const tableIdParam = bookingInfo?.tableId || bookingInfo?.tableNumber || 'B05';
-      const guestsCount =
-        typeof bookingInfo?.guests === 'string'
-          ? parseInt(bookingInfo.guests, 10) || 4
-          : Number(bookingInfo?.guests) || 4;
+      if (cart.length > 0) {
+        const orderResponse = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tableNumber: reservationSnapshot.tableNumber,
+            tableId: reservationSnapshot.tableId || undefined,
+            phone: reservationSnapshot.phone,
+            notes: bookingInfo.note || '',
+            items: cart.map((item) => ({
+              menuItemId: item._id,
+              quantity: item.quantity,
+              customizations: item.customizations,
+            })),
+          }),
+        });
 
-      const res = await fetch('/api/reservations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tableId: tableIdParam,
-          date: bookingInfo?.date || new Date().toISOString().split('T')[0],
-          time: bookingInfo?.time || '19:00',
-          guests: guestsCount,
-          phone: bookingInfo?.phone || '0901234567',
-          note: bookingInfo?.note || '',
-        }),
-      });
+        const orderData = (await orderResponse.json()) as OrderApiResponse;
 
-      const json = await res.json();
-
-      // Xử lý lỗi nghiệp vụ mượt mà (VD: 409 trùng lịch): không throw, không console.error để tránh lỗi overlay
-      if (!res.ok || !json.success) {
-        setErrorMessage(json.message || 'Bàn ăn hoặc khung giờ đã chọn hiện không khả dụng. Vui lòng chọn bàn khác.');
-        setIsSubmitting(false);
-        return;
+        if (!orderResponse.ok || !orderData.success) {
+          try {
+            sessionStorage.setItem(PENDING_RESERVATION_KEY, JSON.stringify(reservationSnapshot));
+          } catch {
+            // Ignore storage errors
+          }
+          setErrorActionTarget('menu');
+          setErrorMsg(
+            orderData.message
+              ? `Đặt bàn (${reservationSnapshot.bookingCode}) đã được giữ, nhưng thực đơn đặt trước gặp lỗi: ${orderData.message}. Vui lòng chỉnh sửa món hoặc thử xác nhận lại.`
+              : `Đặt bàn (${reservationSnapshot.bookingCode}) đã được giữ, nhưng không thể gửi thực đơn đặt trước. Vui lòng thử lại.`
+          );
+          setIsSubmitting(false);
+          return;
+        }
       }
 
-      const resData = json.data;
-      const reservationState: SavedReservationState = {
-        reservationId: resData.id,
-        bookingCode: resData.bookingCode,
-        tableNumber: resData.tableNumber || tableIdParam,
-        qr_token: resData.qr_token || `TK-${resData.tableNumber || tableIdParam}-${resData.bookingCode.slice(-4)}`,
+      const lastBookingPayload = {
+        bookingCode: reservationSnapshot.bookingCode,
+        tableId: reservationSnapshot.tableId,
+        tableNumber: reservationSnapshot.tableNumber,
+        tableType: bookingInfo.tableType || '',
+        guests: reservationSnapshot.guests,
+        date: reservationSnapshot.date,
+        time: reservationSnapshot.time,
+        name: reservationSnapshot.name,
+        phone: reservationSnapshot.phone,
+        totalPrice,
+        itemCount: totalItems,
       };
 
-      setSavedReservation(reservationState);
+      try {
+        sessionStorage.setItem('smares_last_booking', JSON.stringify(lastBookingPayload));
+        sessionStorage.removeItem('smares_selected_table_id');
+        sessionStorage.removeItem(PENDING_RESERVATION_KEY);
+      } catch {
+        // Ignore storage errors
+      }
 
-      // Cập nhật thông tin đơn vào CartContext
-      setBookingInfo((prev) => ({
-        name: prev?.name || 'Khách hàng',
-        phone: prev?.phone || '',
-        email: prev?.email || '',
-        date: prev?.date || '',
-        time: prev?.time || '',
-        guests: prev?.guests || 4,
-        note: prev?.note || '',
-        tableId: resData.tableId,
-        tableNumber: reservationState.tableNumber,
-        tableType: prev?.tableType || 'Khu trung tâm',
-        tableCapacity: prev?.tableCapacity || 4,
-        bookingCode: reservationState.bookingCode,
-        reservationId: reservationState.reservationId,
-        qr_token: reservationState.qr_token,
-        depositAmount: DEPOSIT_AMOUNT,
-      }));
+      setIsRedirecting(true);
+      clearCart();
+      clearBookingInfo();
 
-      // Bước 2: Mở Modal thanh toán cọc với đúng bookingCode thật vừa nhận
-      setIsDepositModalOpen(true);
-    } catch (err: any) {
-      setErrorMessage(err?.message || 'Đã có lỗi xảy ra khi tạo đơn đặt bàn. Vui lòng thử lại hoặc chọn bàn khác.');
-    } finally {
+      router.push(
+        `/booking/success?code=${encodeURIComponent(reservationSnapshot.bookingCode)}&table=${encodeURIComponent(reservationSnapshot.tableNumber)}`
+      );
+    } catch {
+      setErrorMsg('Lỗi kết nối tới máy chủ. Vui lòng thử lại sau giây lát.');
       setIsSubmitting(false);
     }
   };
 
-  // Bước 3: Khi khách bấm "Tôi đã chuyển khoản xong" trong Modal
-  const handleConfirmDepositPayment = async () => {
-    if (!savedReservation) return;
-
-    setIsProcessingDeposit(true);
-    try {
-      // Gọi API POST /api/transactions tạo bản ghi giao dịch cọc
-      const res = await fetch('/api/transactions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          reservationId: savedReservation.reservationId,
-          amount: DEPOSIT_AMOUNT,
-          provider: 'BANK_QR',
-        }),
-      });
-
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        console.warn('API transaction cảnh báo:', json.message);
-      }
-
-      // Cập nhật trạng thái paymentStatus trong context
-      setBookingInfo((prev) => ({
-        ...prev!,
-        paymentStatus: 'PENDING',
-        depositAmount: DEPOSIT_AMOUNT,
-      }));
-
-      setIsDepositModalOpen(false);
-      router.push('/booking/success');
-    } catch (err) {
-      console.error('Lỗi khi gửi thông tin cọc:', err);
-      // Vẫn cho phép điều hướng sang trang thành công nếu đã tạo reservation
-      router.push('/booking/success');
-    } finally {
-      setIsProcessingDeposit(false);
-    }
-  };
-
-  const handleCloseDepositModal = () => {
-    setIsDepositModalOpen(false);
-    // Nếu khách đóng modal sau khi đã tạo reservation thì chuyển sang trang thành công
-    if (savedReservation) {
-      router.push('/booking/success');
-    }
-  };
-
-  if (isLoaded && !hasActiveBooking) {
+  if (isLoaded && !hasActiveBooking && !isRedirecting) {
     return (
       <main className="flex-1 bg-[#faf8f5] text-[#1c1917] flex flex-col min-h-screen">
         <BookingStepper currentStep={4} />
@@ -174,12 +266,14 @@ export default function BookingConfirmPage() {
           <div className="bg-white rounded-3xl p-8 shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] border border-[#ebe7df]">
             <div className="w-14 h-14 rounded-full bg-[#fef3c7] text-[#d97706] flex items-center justify-center mx-auto mb-4 border border-[#fde68a]">
               <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
-                <line x1="12" y1="9" x2="12" y2="13"></line>
-                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
               </svg>
             </div>
-            <h1 className="text-2xl font-serif font-bold text-[#1c1917] mb-2">Chưa có thông tin đặt bàn</h1>
+            <h1 className="text-2xl font-serif font-bold text-[#1c1917] mb-2">
+              Chưa có thông tin đặt bàn
+            </h1>
             <p className="text-stone-500 text-sm mb-6">
               Vui lòng hoàn thành thông tin bàn trước khi xem trang xác nhận.
             </p>
@@ -221,11 +315,13 @@ export default function BookingConfirmPage() {
               <div className="flex items-center gap-2.5">
                 <span className="w-9 h-9 rounded-xl bg-[#f0fdf4] text-[#14532d] flex items-center justify-center font-bold text-base border border-[#bbf7d0]">
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path>
-                    <circle cx="12" cy="10" r="3"></circle>
+                    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+                    <circle cx="12" cy="10" r="3" />
                   </svg>
                 </span>
-                <h2 className="font-serif font-bold text-xl text-[#14532d]">1. Chi tiết Bàn &amp; Thời gian</h2>
+                <h2 className="font-serif font-bold text-xl text-[#14532d]">
+                  1. Chi tiết Bàn &amp; Thời gian
+                </h2>
               </div>
               <Link
                 href="/booking/diagram"
@@ -233,7 +329,7 @@ export default function BookingConfirmPage() {
               >
                 <span>Sửa vị trí bàn</span>
                 <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path>
+                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
                 </svg>
               </Link>
             </div>
@@ -243,11 +339,15 @@ export default function BookingConfirmPage() {
                 <p className="text-xs text-stone-500 mb-1">Vị trí bàn ăn</p>
                 <p className="font-serif font-bold text-stone-900 text-lg">
                   Bàn {bookingInfo?.tableNumber}{' '}
-                  <span className="text-xs font-semibold text-[#15803d] bg-[#f0fdf4] px-2.5 py-0.5 rounded-full ml-1 border border-[#bbf7d0]">
-                    {bookingInfo?.tableType}
-                  </span>
+                  {bookingInfo?.tableType && (
+                    <span className="text-xs font-semibold text-[#15803d] bg-[#f0fdf4] px-2.5 py-0.5 rounded-full ml-1 border border-[#bbf7d0]">
+                      {bookingInfo.tableType}
+                    </span>
+                  )}
                 </p>
-                <p className="text-xs text-stone-500 mt-1">Sức chứa: {bookingInfo?.tableCapacity || 4} chỗ ngồi</p>
+                <p className="text-xs text-stone-500 mt-1">
+                  Sức chứa: {bookingInfo?.tableCapacity || 4} chỗ ngồi
+                </p>
               </div>
 
               <div className="bg-[#faf8f5] p-4 rounded-xl border border-[#ebe7df]">
@@ -260,7 +360,7 @@ export default function BookingConfirmPage() {
                 <p className="text-xs text-stone-500 mb-1">Khách hàng đặt bàn</p>
                 <p className="font-serif font-bold text-stone-900 text-lg">{bookingInfo?.name}</p>
                 <p className="text-xs text-stone-500 mt-1">
-                  SĐT: {bookingInfo?.phone} • {bookingInfo?.guests}
+                  SĐT: {bookingInfo?.phone} • {guestsCount} người
                 </p>
               </div>
             </div>
@@ -279,9 +379,9 @@ export default function BookingConfirmPage() {
               <div className="flex items-center gap-2.5">
                 <span className="w-9 h-9 rounded-xl bg-[#f0fdf4] text-[#14532d] flex items-center justify-center font-bold text-base border border-[#bbf7d0]">
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"></path>
-                    <path d="M7 2v20"></path>
-                    <path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"></path>
+                    <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2" />
+                    <path d="M7 2v20" />
+                    <path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7" />
                   </svg>
                 </span>
                 <h2 className="font-serif font-bold text-xl text-[#14532d]">2. Thực đơn Đặt trước</h2>
@@ -292,7 +392,7 @@ export default function BookingConfirmPage() {
               >
                 <span>{cart.length > 0 ? 'Sửa món ăn' : '+ Chọn thêm món'}</span>
                 <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path>
+                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
                 </svg>
               </Link>
             </div>
@@ -301,11 +401,13 @@ export default function BookingConfirmPage() {
               <div className="p-8 bg-[#faf8f5] rounded-2xl border border-[#ebe7df] text-center">
                 <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto text-xl shadow-xs mb-3 text-stone-400 border border-[#ebe7df]">
                   <svg className="w-5 h-5 text-stone-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
-                    <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+                    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                    <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
                   </svg>
                 </div>
-                <h3 className="font-serif font-bold text-stone-800 text-base">Không chọn món ăn trước</h3>
+                <h3 className="font-serif font-bold text-stone-800 text-base">
+                  Không chọn món ăn trước
+                </h3>
                 <p className="text-xs sm:text-sm text-stone-500 mt-1 max-w-md mx-auto leading-relaxed">
                   Quý khách đã chọn bước gọi món trực tiếp tại nhà hàng. Đội ngũ nhân viên sẽ phục vụ menu chi tiết ngay khi quý khách ngồi vào bàn.
                 </p>
@@ -315,20 +417,23 @@ export default function BookingConfirmPage() {
                 >
                   <span>Muốn chọn món trước để bếp trưởng chuẩn bị sẵn? Nhấp vào đây</span>
                   <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M5 12h14"></path>
-                    <path d="m12 5 7 7-7 7"></path>
+                    <path d="M5 12h14" />
+                    <path d="m12 5 7 7-7 7" />
                   </svg>
                 </Link>
               </div>
             ) : (
               <div>
                 <div className="divide-y divide-[#ebe7df]">
-                  {cart.map((item) => (
-                    <div key={item._id} className="py-4 flex items-center justify-between gap-4">
+                  {cart.map((item, idx) => (
+                    <div key={item.cartKey || `${item._id}-${idx}`} className="py-4 flex items-center justify-between gap-4">
                       <div className="flex items-center gap-3.5">
-                        <img
-                          src={item.imageUrl}
+                        <Image
+                          src={item.imageUrl || '/foods/pho_bo.jpg'}
                           alt={item.name}
+                          width={64}
+                          height={64}
+                          unoptimized
                           className="w-16 h-16 rounded-xl object-cover border border-[#ebe7df] shrink-0"
                         />
                         <div>
@@ -337,7 +442,7 @@ export default function BookingConfirmPage() {
                             {item.isPreOrderOnly && (
                               <span className="text-[11px] bg-[#fffbeb] text-[#92400e] font-semibold px-2 py-0.5 rounded-full border border-[#fde68a] flex items-center gap-1">
                                 <svg className="w-3 h-3 text-[#d97706]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14"></path>
+                                  <path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14" />
                                 </svg>
                                 <span>Món đặc biệt</span>
                               </span>
@@ -360,7 +465,7 @@ export default function BookingConfirmPage() {
                 {hasSpecialItems && (
                   <div className="mt-4 p-3.5 bg-[#fffbeb] rounded-xl border border-[#fde68a] text-xs sm:text-sm text-[#92400e] flex items-center gap-2">
                     <svg className="w-4 h-4 text-[#d97706] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14"></path>
+                      <path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14" />
                     </svg>
                     <span>
                       Các món đặc biệt đã được ghi chú vào đơn và sẽ được bếp trưởng sơ chế trước đúng giờ hẹn.
@@ -380,43 +485,54 @@ export default function BookingConfirmPage() {
           <div className="bg-[#f0fdf4] rounded-2xl border border-[#bbf7d0] p-6 text-xs sm:text-sm text-[#14532d] space-y-2">
             <p className="font-bold text-base flex items-center gap-2">
               <svg className="w-4 h-4 text-[#15803d]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="12" y1="16" x2="12" y2="12"></line>
-                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="16" x2="12" y2="12" />
+                <line x1="12" y1="8" x2="12.01" y2="8" />
               </svg>
               <span>Quy định giữ bàn SmaRes:</span>
             </p>
             <ul className="list-disc pl-5 space-y-1.5 text-stone-700 leading-relaxed">
-              <li>Nhà hàng giữ bàn tối đa <strong>15 phút</strong> so với khung giờ đã hẹn ({bookingInfo?.time}).</li>
-              <li>Quý khách có thể hủy hoặc thay đổi giờ đặt miễn phí trước ít nhất <strong>2 tiếng</strong>.</li>
-              <li>Thanh toán thực đơn sẽ được thực hiện trực tiếp tại nhà hàng sau khi dùng bữa.</li>
+              <li>
+                Nhà hàng giữ bàn tối đa <strong>15 phút</strong> so với khung giờ đã hẹn ({bookingInfo?.time}).
+              </li>
+              <li>
+                Quý khách có thể hủy đặt bàn miễn phí trước ít nhất <strong>60 phút</strong> trước giờ hẹn (giờ Việt Nam +07:00).
+              </li>
+              <li>
+                Thanh toán thực đơn sẽ được thực hiện trực tiếp tại nhà hàng sau khi dùng bữa.
+              </li>
             </ul>
           </div>
 
-          {/* THÔNG BÁO LỖI NGHIỆP VỤ (VÍ DỤ TRÙNG BÀN 409) */}
-          {errorMessage && (
-            <div className="p-4 sm:p-5 bg-[#fffbeb] border border-[#fde68a] rounded-2xl text-[#92400e] text-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs animate-fade-in">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-[#fef3c7] text-[#d97706] flex items-center justify-center shrink-0 border border-[#fde68a]">
-                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="12" y1="8" x2="12" y2="12"></line>
-                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                  </svg>
-                </div>
-                <div>
-                  <p className="font-bold text-stone-900 text-sm sm:text-base">{errorMessage}</p>
-                  <p className="text-xs text-stone-600 mt-0.5">
-                    Khung giờ này đã có khách giữ chỗ trước. Quý khách vui lòng chọn bàn khác trên sơ đồ hoặc đổi khung giờ.
-                  </p>
-                </div>
+          {/* ERROR BANNER */}
+          {errorMsg && (
+            <div className="p-4 sm:p-5 bg-red-50 border border-red-200 rounded-2xl text-red-800 text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-2.5">
+                <svg className="w-5 h-5 shrink-0 mt-0.5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <span>{errorMsg}</span>
               </div>
-              <Link
-                href="/booking/diagram"
-                className="px-4 py-2.5 bg-[#14532d] hover:bg-[#15803d] text-white rounded-xl text-xs sm:text-sm font-semibold shrink-0 transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap self-end sm:self-center"
-              >
-                <span>← Chọn bàn khác</span>
-              </Link>
+              {errorActionTarget === 'diagram' ? (
+                <Link
+                  href="/booking/diagram"
+                  className="text-xs font-semibold bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded-xl whitespace-nowrap text-center transition-colors"
+                >
+                  Chọn lại bàn →
+                </Link>
+              ) : errorActionTarget === 'menu' ? (
+                <Link
+                  href="/booking/menu"
+                  className="text-xs font-semibold bg-white border border-red-300 hover:bg-red-100 text-red-800 px-4 py-2 rounded-xl whitespace-nowrap text-center transition-colors"
+                >
+                  Sửa món ăn
+                </Link>
+              ) : null}
             </div>
           )}
 
@@ -430,17 +546,18 @@ export default function BookingConfirmPage() {
             </Link>
 
             <button
-              onClick={handleOpenDepositFlow}
-              disabled={isSubmitting}
-              className="flex-1 w-full bg-[#14532d] hover:bg-[#15803d] text-white font-semibold py-4 rounded-xl shadow-[0_8px_24px_-4px_rgba(20,83,45,0.45)] hover:shadow-[0_12px_28px_-4px_rgba(20,83,45,0.6)] text-base sm:text-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+              type="button"
+              onClick={handleFinalConfirm}
+              disabled={isSubmitting || isRedirecting}
+              className="flex-1 w-full bg-[#14532d] hover:bg-[#15803d] disabled:opacity-70 text-white font-semibold py-4 rounded-xl shadow-[0_8px_24px_-4px_rgba(20,83,45,0.45)] hover:shadow-[0_12px_28px_-4px_rgba(20,83,45,0.6)] text-base sm:text-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
-              {isSubmitting ? (
-                <span>Đang xử lý tạo đơn đặt bàn...</span>
+              {isSubmitting || isRedirecting ? (
+                <span>Đang xử lý đặt bàn...</span>
               ) : (
                 <>
-                  <span>Xác Nhận &amp; Thanh Toán Cọc Giữ Bàn</span>
+                  <span>Xác Nhận &amp; Hoàn Tất Đặt Bàn Ngay</span>
                   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <polyline points="20 6 9 17 4 12"></polyline>
+                    <polyline points="20 6 9 17 4 12" />
                   </svg>
                 </>
               )}
@@ -448,16 +565,6 @@ export default function BookingConfirmPage() {
           </div>
         </div>
       </div>
-
-      {/* MODAL THANH TOÁN TIỀN CỌC (BANK QR) */}
-      <DepositPaymentModal
-        isOpen={isDepositModalOpen}
-        onClose={handleCloseDepositModal}
-        bookingCode={savedReservation?.bookingCode || bookingInfo?.bookingCode || ''}
-        depositAmount={DEPOSIT_AMOUNT}
-        onConfirmPayment={handleConfirmDepositPayment}
-        isProcessing={isProcessingDeposit}
-      />
     </main>
   );
 }

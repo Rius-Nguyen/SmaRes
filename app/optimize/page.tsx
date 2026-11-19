@@ -2,18 +2,41 @@
 
 import { useState, useEffect } from 'react';
 
+interface SearchDishResult {
+  id: string;
+  name: string;
+  price: number;
+  tags: string;
+}
+
+interface SearchApiResponse {
+  success: boolean;
+  cached?: boolean;
+  responseTimeMs?: number;
+  results?: SearchDishResult[];
+}
+
+interface BookingApiResponse {
+  success: boolean;
+  tableId?: string;
+  responseTimeMs?: number;
+  booking?: {
+    status?: string;
+  } | null;
+}
+
 export default function OptimizePage() {
   const [query, setQuery] = useState<string>('pho');
   const [tableId, setTableId] = useState<string>('B05');
-  const [searchData, setSearchData] = useState<any>(null);
-  const [bookingData, setBookingData] = useState<any>(null);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [searchData, setSearchData] = useState<SearchApiResponse | null>(null);
+  const [bookingData, setBookingData] = useState<BookingApiResponse | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
 
   const runSearchTest = async (keyword: string) => {
     try {
       setLoading(true);
       const res = await fetch(`/api/search?q=${encodeURIComponent(keyword)}&limit=5`);
-      const data = await res.json();
+      const data = (await res.json()) as SearchApiResponse;
       setSearchData(data);
     } catch (err) {
       console.error('Lỗi test tìm kiếm:', err);
@@ -25,7 +48,7 @@ export default function OptimizePage() {
   const runBookingCheck = async (targetTable: string) => {
     try {
       const res = await fetch(`/api/booking?tableId=${encodeURIComponent(targetTable)}`);
-      const data = await res.json();
+      const data = (await res.json()) as BookingApiResponse;
       setBookingData(data);
     } catch (err) {
       console.error('Lỗi kiểm tra API đặt bàn:', err);
@@ -33,8 +56,29 @@ export default function OptimizePage() {
   };
 
   useEffect(() => {
-    runSearchTest('pho');
-    runBookingCheck('B05');
+    let isCancelled = false;
+
+    Promise.all([
+      fetch('/api/search?q=pho&limit=5').then((r) => r.json() as Promise<SearchApiResponse>),
+      fetch('/api/booking?tableId=B05').then((r) => r.json() as Promise<BookingApiResponse>),
+    ])
+      .then(([searchJson, bookingJson]) => {
+        if (isCancelled) return;
+        setSearchData(searchJson);
+        setBookingData(bookingJson);
+      })
+      .catch((err) => {
+        console.error('Lỗi khởi tạo kiểm thử tối ưu:', err);
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   return (
@@ -46,7 +90,7 @@ export default function OptimizePage() {
             SmaRes • Tối Ưu Hiệu Năng Truy Vấn
           </p>
           <h1 className="text-2xl font-bold text-gray-900 mb-4">
-            Kiểm Thử Tốc Độ Tìm Kiếm & Cache
+            Kiểm Thử Tốc Độ Tìm Kiếm &amp; Cache
           </h1>
 
           <div className="flex flex-wrap gap-3 mb-5">
@@ -93,7 +137,7 @@ export default function OptimizePage() {
                 <p className="text-sm text-gray-500">Đang truy vấn...</p>
               ) : (
                 <div className="space-y-2.5">
-                  {(searchData.results || []).map((dish: any) => (
+                  {(searchData.results || []).map((dish) => (
                     <div
                       key={dish.id}
                       className="flex items-center justify-between bg-gray-50 rounded-2xl px-4 py-3 border border-gray-100"

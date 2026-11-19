@@ -4,11 +4,16 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import BookingStepper from '@/components/BookingStepper';
-import { useCart } from '@/app/context/CartContext';
+import { useCart, type CartItem } from '@/app/context/CartContext';
+import { formatMoney } from '@/app/lib/format';
 import { INITIAL_MENU_ITEMS, MenuItemData } from '@/app/lib/menuInitialData';
+import DishCard from '@/components/menu/DishCard';
+import SpecialDishModal from '@/components/menu/SpecialDishModal';
+import { useToast } from '@/components/ui/Toast';
 
 export default function BookingMenuPage() {
   const router = useRouter();
+  const { showToast } = useToast();
   const {
     cart,
     addToCart,
@@ -27,46 +32,59 @@ export default function BookingMenuPage() {
   const [activeTab, setActiveTab] = useState<string>('Tất cả');
   const [menuDishes, setMenuDishes] = useState<MenuItemData[]>(INITIAL_MENU_ITEMS);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [specialDishModal, setSpecialDishModal] = useState<MenuItemData | null>(null);
 
-  // Tải danh sách thực đơn đồng nhất từ MongoDB API (/api/menu)
   useEffect(() => {
+    let isCancelled = false;
+
     const fetchMenu = async () => {
       try {
         const res = await fetch('/api/menu');
-        const json = await res.json();
-        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        const json = (await res.json()) as { success?: boolean; data?: MenuItemData[] };
+        if (!isCancelled && res.ok && json.success && Array.isArray(json.data) && json.data.length > 0) {
           setMenuDishes(json.data);
         }
       } catch (e) {
         console.error('Lỗi khi tải thực đơn từ API, sử dụng dữ liệu mặc định:', e);
       }
     };
-    fetchMenu();
+
+    void fetchMenu();
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
-  // Định dạng tiền tệ VNĐ
-  const formatMoney = (val: number) => {
-    return val.toLocaleString('vi-VN') + 'đ';
-  };
-
-  // Lọc danh sách món ăn theo tab & từ khóa tìm kiếm
+  const normalizedQuery = searchQuery.trim().toLowerCase();
   const filteredDishes = menuDishes.filter((dish) => {
-    if (searchQuery.trim() !== '') {
-      return dish.name.toLowerCase().includes(searchQuery.toLowerCase());
+    if (normalizedQuery !== '') {
+      return (
+        dish.name.toLowerCase().includes(normalizedQuery) ||
+        dish.description.toLowerCase().includes(normalizedQuery)
+      );
     }
-    if (activeTab === 'Món đặc biệt') return dish.isPreOrderOnly;
+    if (activeTab === 'Món đặc biệt') return Boolean(dish.isPreOrderOnly);
     if (activeTab === 'Tất cả') return true;
     return dish.category === activeTab;
   });
 
-  // Tìm số lượng món hiện có trong giỏ
-  const getItemQuantityInCart = (dishId: string) => {
-    const item = cart.find((i) => i._id === dishId);
-    return item ? item.quantity : 0;
+  const getItemQuantityInCart = (dishId: string): number => {
+    return cart
+      .filter((i) => i._id === dishId)
+      .reduce((sum, i) => sum + i.quantity, 0);
   };
 
-  // Thêm món vào giỏ
   const handleAddDish = (dish: MenuItemData) => {
+    if (dish.isAvailable === false) {
+      showToast(`Món "${dish.name}" hiện tạm hết, quý khách vui lòng chọn món khác.`, 'warning');
+      return;
+    }
+
+    if (dish.isPreOrderOnly && !hasActiveBooking) {
+      setSpecialDishModal(dish);
+      return;
+    }
+
     addToCart({
       _id: dish._id,
       name: dish.name,
@@ -75,19 +93,28 @@ export default function BookingMenuPage() {
       category: dish.category,
       isPreOrderOnly: dish.isPreOrderOnly,
     });
+    showToast(`Đã thêm "${dish.name}" vào thực đơn đặt trước!`, 'success');
   };
 
-  // Điều hướng sang Bước 4 (Xác nhận đặt bàn & thực đơn)
+  const handleDecrementDish = (dish: MenuItemData) => {
+    if (dish.isAvailable === false) return;
+    const matching = cart.filter((i) => i._id === dish._id);
+    if (matching.length === 0) return;
+
+    const target: CartItem =
+      matching.find((i) => !i.customizations) || matching[matching.length - 1];
+    const itemKey = target.cartKey || target._id;
+    updateQuantity(itemKey, target.quantity - 1);
+  };
+
   const handleProceedToConfirm = () => {
     router.push('/booking/confirm');
   };
 
-  // Hành động "Bỏ qua chọn món trước" (Không bắt buộc)
   const handleSkipDishes = () => {
     router.push('/booking/confirm');
   };
 
-  // NẾU CHƯA CÓ THÔNG TIN ĐẶT BÀN VÀ CHƯA CHỌN BÀN Ở BƯỚC 1 & 2
   if (isLoaded && !hasActiveBooking) {
     return (
       <main className="flex-1 bg-[#faf8f5] text-[#1c1917] flex flex-col min-h-screen">
@@ -96,8 +123,8 @@ export default function BookingMenuPage() {
           <div className="bg-white rounded-3xl p-8 md:p-12 shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] border border-[#ebe7df]">
             <div className="w-16 h-16 bg-[#fffbeb] rounded-full flex items-center justify-center mx-auto mb-6 text-[#d97706] border border-[#fde68a]">
               <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect>
-                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
               </svg>
             </div>
             <h1 className="text-2xl md:text-3xl font-serif font-bold text-[#1c1917] mb-3">
@@ -111,7 +138,7 @@ export default function BookingMenuPage() {
             <div className="bg-[#fffbeb] p-4 rounded-xl border border-[#fde68a] text-left mb-8">
               <p className="text-xs font-bold text-[#92400e] mb-1 flex items-center gap-1.5">
                 <svg className="w-3.5 h-3.5 text-[#d97706]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                 </svg>
                 <span>ĐẶC QUYỀN KHI ĐẶT BÀN TRƯỚC:</span>
               </p>
@@ -126,7 +153,11 @@ export default function BookingMenuPage() {
               href="/booking"
               className="inline-flex items-center gap-2 bg-[#14532d] hover:bg-[#15803d] text-white font-semibold px-8 py-3.5 rounded-xl shadow-[0_8px_20px_-4px_rgba(20,83,45,0.4)] transition-all text-sm"
             >
-              <span>← Bắt đầu đặt bàn &amp; chọn bàn ngay</span>
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M19 12H5" />
+                <path d="m12 19-7-7 7-7" />
+              </svg>
+              <span>Bắt đầu đặt bàn &amp; chọn bàn ngay</span>
             </Link>
           </div>
         </div>
@@ -136,7 +167,6 @@ export default function BookingMenuPage() {
 
   return (
     <main className="flex-1 bg-[#faf8f5] text-[#1c1917] flex flex-col min-h-screen pb-28">
-      {/* Workflow Stepper: Bước 3 */}
       <BookingStepper currentStep={3} />
 
       {/* Banner tóm tắt bàn đã chọn */}
@@ -159,30 +189,30 @@ export default function BookingMenuPage() {
             </h1>
           </div>
 
-          {/* Nút tiến hành xem xác nhận */}
           <div className="flex items-center gap-3 w-full sm:w-auto">
             <button
+              type="button"
               onClick={handleProceedToConfirm}
               className="w-full sm:w-auto text-xs sm:text-sm font-semibold bg-[#14532d] hover:bg-[#15803d] text-white px-6 py-3 rounded-xl shadow-[0_8px_20px_-4px_rgba(20,83,45,0.4)] transition-all flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer"
             >
               <span>Xác nhận thực đơn ({totalItems} món)</span>
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M5 12h14"></path>
-                <path d="m12 5 7 7-7 7"></path>
+                <path d="M5 12h14" />
+                <path d="m12 5 7 7-7 7" />
               </svg>
             </button>
           </div>
         </div>
       </div>
 
-      {/* THÔNG BÁO GHI CHÚ QUAN TRỌNG */}
+      {/* Ghi chú đặc quyền đặt trước */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
         <div className="bg-gradient-to-r from-[#fffbeb] via-[#fef3c7]/60 to-[#f0fdf4] rounded-3xl p-6 md:p-8 border border-[#fde68a] shadow-xs">
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
             <div className="flex items-start gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-[#d97706] text-white flex items-center justify-center text-2xl shrink-0 shadow-sm border border-[#fbbf24]/40">
+              <div className="w-14 h-14 rounded-2xl bg-[#d97706] text-white flex items-center justify-center shrink-0 shadow-sm border border-[#fbbf24]/40">
                 <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14"></path>
+                  <path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14" />
                 </svg>
               </div>
               <div className="space-y-2">
@@ -196,9 +226,9 @@ export default function BookingMenuPage() {
                   <div className="flex items-start gap-3">
                     <span className="text-[#15803d] shrink-0 mt-0.5">
                       <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="12" y1="16" x2="12" y2="12"></line>
-                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="16" x2="12" y2="12" />
+                        <line x1="12" y1="8" x2="12.01" y2="8" />
                       </svg>
                     </span>
                     <div className="text-xs sm:text-sm text-stone-800 leading-relaxed">
@@ -215,12 +245,13 @@ export default function BookingMenuPage() {
             </div>
 
             <button
+              type="button"
               onClick={() => setActiveTab('Món đặc biệt')}
               className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-[#92400e] bg-[#fef3c7] hover:bg-[#fde68a] px-5 py-3 rounded-xl whitespace-nowrap border border-[#fcd34d] shrink-0 shadow-xs transition-all cursor-pointer"
             >
               <span>Xem ngay món đặc biệt</span>
               <svg className="w-4 h-4 text-[#d97706]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
               </svg>
             </button>
           </div>
@@ -228,16 +259,14 @@ export default function BookingMenuPage() {
       </div>
 
       {/* Nội dung chính: Danh mục + Danh sách món + Giỏ hàng mini */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
-        
-        {/* Cột trái (8/12 cột): Danh mục tab & Grid thẻ món ăn */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 grid grid-cols-1 lg:grid-cols-12 gap-8 w-full">
+        {/* Cột trái (8/12 cột) */}
         <div className="lg:col-span-8">
-          {/* Thanh chuyển tab danh mục & Ô tìm kiếm */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 pb-4 border-b border-gray-200 mb-6">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 pb-4 border-b border-[#ebe7df] mb-6">
             <div className="flex items-center space-x-2 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
               {[
                 { id: 'Tất cả', label: 'Tất cả món' },
-                { id: 'Món đặc biệt', label: '👑 Món Đặc Biệt Đặt Trước', badge: 'Mới' },
+                { id: 'Món đặc biệt', label: 'Món Đặc Biệt Đặt Trước', isSpecial: true, badge: 'Mới' },
                 { id: 'Khai vị', label: 'Khai vị' },
                 { id: 'Món chính', label: 'Món chính' },
                 { id: 'Tráng miệng', label: 'Tráng miệng' },
@@ -247,23 +276,29 @@ export default function BookingMenuPage() {
                 return (
                   <button
                     key={tab.id}
+                    type="button"
                     onClick={() => {
                       setActiveTab(tab.id);
                       setSearchQuery('');
                     }}
-                    className={`interactive-btn px-4 py-2.5 rounded-xl text-sm sm:text-base font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                    className={`interactive-btn px-4 py-2.5 rounded-full text-xs sm:text-sm font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
                       isActive
-                        ? tab.id === 'Món đặc biệt'
-                          ? 'bg-amber-600 text-white shadow-md ring-2 ring-amber-300'
-                          : 'bg-green-800 text-white shadow-sm'
-                        : tab.id === 'Món đặc biệt'
-                        ? 'text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200'
-                        : 'text-gray-600 hover:text-green-800 hover:bg-gray-100'
+                        ? tab.isSpecial
+                          ? 'bg-[#d97706] text-white shadow-md ring-2 ring-[#fbbf24]'
+                          : 'bg-[#14532d] text-white shadow-sm'
+                        : tab.isSpecial
+                        ? 'text-[#92400e] bg-[#fef3c7] hover:bg-[#fde68a] border border-[#fcd34d]'
+                        : 'text-stone-700 bg-white hover:text-[#14532d] hover:bg-stone-100 border border-[#ebe7df]'
                     }`}
                   >
+                    {tab.isSpecial && (
+                      <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14" />
+                      </svg>
+                    )}
                     <span>{tab.label}</span>
                     {tab.badge && !isActive && (
-                      <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-bold">
+                      <span className="text-[10px] bg-[#d97706] text-white px-2 py-0.5 rounded-full font-bold">
                         {tab.badge}
                       </span>
                     )}
@@ -272,279 +307,280 @@ export default function BookingMenuPage() {
               })}
             </div>
 
-            {/* Ô tìm kiếm món ăn */}
             <div className="relative w-full sm:w-64 shrink-0">
               <input
                 type="text"
                 placeholder="Tìm món ăn..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-4 pr-10 py-2.5 border border-gray-300 rounded-xl text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-green-700 bg-white"
+                className="w-full pl-4 pr-10 py-2.5 border border-[#d6d0c4] rounded-full text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#14532d] bg-white shadow-xs"
               />
-              <span className="absolute right-3 top-3 text-gray-400 text-sm">🔍</span>
+              <svg
+                className="w-4 h-4 absolute right-3.5 top-3 text-stone-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
             </div>
           </div>
 
-          {/* Grid danh sách món ăn - CHỮ KHÔNG BỊ CẮT, HIỂN THỊ ĐẦY ĐỦ */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-            {filteredDishes.map((dish) => {
-              const qtyInCart = getItemQuantityInCart(dish._id);
+          {filteredDishes.length === 0 ? (
+            <div className="text-center py-16 bg-white rounded-2xl border border-[#ebe7df] shadow-xs">
+              <p className="font-serif font-bold text-lg text-[#1c1917] mb-1">
+                Không tìm thấy món ăn phù hợp
+              </p>
+              <p className="text-xs text-stone-500">
+                Vui lòng thử từ khóa hoặc danh mục khác.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+              {filteredDishes.map((dish) => {
+                const qtyInCart = getItemQuantityInCart(dish._id);
 
-              return (
-                <div
-                  key={dish._id}
-                  className={`interactive-card bg-white rounded-2xl shadow-sm border overflow-hidden flex flex-col justify-between group transition-all duration-300 hover:shadow-lg ${
-                    dish.isPreOrderOnly
-                      ? 'border-amber-300 ring-1 ring-amber-200 bg-gradient-to-b from-amber-50/20 to-white'
-                      : 'border-gray-200'
-                  }`}
-                >
-                  {/* Phần hình ảnh */}
-                  <div className="h-52 bg-gray-100 relative overflow-hidden">
-                    <img
-                      src={dish.imageUrl}
-                      alt={dish.name}
-                      className="w-full h-full object-cover card-zoom-img"
-                    />
-
-                    {/* Badge món đặc biệt */}
-                    {dish.isPreOrderOnly ? (
-                      <div className="absolute top-2.5 left-2.5 bg-gradient-to-r from-amber-600 to-yellow-600 text-white text-xs font-bold px-3 py-1 rounded-full shadow-md flex items-center gap-1 backdrop-blur-sm">
-                        <span>👑</span>
-                        <span>Món Đặc Quyền Pre-Order</span>
-                      </div>
-                    ) : (
-                      <div className="absolute top-2.5 left-2.5 bg-black/60 text-white text-xs font-medium px-2.5 py-0.5 rounded-md backdrop-blur-sm">
-                        {dish.category}
-                      </div>
-                    )}
-
-                    {/* Giá tiền */}
-                    <div className="absolute bottom-2.5 right-2.5 bg-white/95 text-green-800 font-bold text-sm px-3 py-1 rounded-lg shadow-sm border border-gray-100">
-                      {formatMoney(dish.price)}
-                    </div>
-                  </div>
-
-                  {/* Phần thông tin món - HIỆN TOÀN BỘ CHỮ, KHÔNG CẮT BỎ */}
-                  <div className="p-5 flex-1 flex flex-col justify-between">
-                    <div>
-                      {/* Tiêu đề món: hiện trọn vẹn tên món ăn */}
-                      <h3
-                        className={`font-bold text-lg leading-snug group-hover:text-green-800 transition-colors ${
-                          dish.isPreOrderOnly ? 'text-amber-950' : 'text-gray-900'
-                        }`}
-                      >
-                        {dish.name}
-                      </h3>
-
-                      {/* Mô tả món ăn: hiển thị đầy đủ, cỡ chữ rõ ràng */}
-                      <p className="text-gray-600 text-sm mt-2 leading-relaxed">
-                        {dish.description}
-                      </p>
-
-                      {/* Ghi chú chuẩn bị món đặc biệt */}
-                      {dish.preparationNote && (
-                        <div className="mt-3 flex items-start gap-1.5 text-xs sm:text-sm text-amber-900 bg-amber-50 p-2.5 rounded-xl border border-amber-200 font-medium">
-                          <span className="shrink-0 mt-0.5">⏱️</span>
-                          <span className="leading-tight">{dish.preparationNote}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Nút thêm vào giỏ hoặc bộ điều khiển số lượng */}
-                    <div className="mt-5 pt-3 border-t border-gray-100">
-                      {qtyInCart === 0 ? (
-                        <button
-                          onClick={() => handleAddDish(dish)}
-                          className={`interactive-btn w-full py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${
-                            dish.isPreOrderOnly
-                              ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-sm'
-                              : 'bg-green-800 hover:bg-green-900 text-white shadow-sm'
-                          }`}
-                        >
-                          <span>+ Thêm vào thực đơn</span>
-                        </button>
-                      ) : (
-                        <div className="w-full flex items-center justify-between bg-green-50 rounded-xl p-1.5 border border-green-200">
-                          <button
-                            onClick={() => updateQuantity(dish._id, qtyInCart - 1)}
-                            className="w-9 h-9 rounded-lg bg-white text-green-800 font-bold shadow-sm hover:bg-gray-100 flex items-center justify-center text-base transition-colors"
-                          >
-                            –
-                          </button>
-                          <span className="font-bold text-sm text-green-900 px-3">
-                            {qtyInCart} phần
-                          </span>
-                          <button
-                            onClick={() => updateQuantity(dish._id, qtyInCart + 1)}
-                            className="w-9 h-9 rounded-lg bg-green-800 text-white font-bold shadow-sm hover:bg-green-900 flex items-center justify-center text-base transition-colors"
-                          >
-                            +
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                return (
+                  <DishCard
+                    key={dish._id}
+                    dish={dish}
+                    variant="compact"
+                    showCategoryBadge
+                    cartQuantity={qtyInCart}
+                    hasActiveBooking={hasActiveBooking}
+                    isSoldOut={dish.isAvailable === false}
+                    actionLabel="Thêm vào thực đơn"
+                    onAddToCart={handleAddDish}
+                    onIncrement={handleAddDish}
+                    onDecrement={handleDecrementDish}
+                  />
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {/* Cột phải (4/12 cột): Tóm tắt Giỏ hàng đặt trước rộng rãi, không bị chật */}
+        {/* Cột phải (4/12 cột): Tóm tắt Giỏ hàng đặt trước */}
         <div className="lg:col-span-4">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sticky top-36">
-            <div className="flex items-center justify-between border-b pb-4 mb-4">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">🛒</span>
-                <h2 className="font-bold text-lg text-gray-900">Thực đơn đã chọn</h2>
+          <div className="bg-white rounded-2xl shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] border border-[#ebe7df] p-6 sticky top-36">
+            <div className="flex items-center justify-between border-b border-[#ebe7df] pb-4 mb-4">
+              <div className="flex items-center gap-2.5">
+                <span className="w-8 h-8 rounded-xl bg-[#f0fdf4] text-[#14532d] flex items-center justify-center border border-[#bbf7d0]">
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
+                    <path d="M3 6h18" />
+                    <path d="M16 10a4 4 0 0 1-8 0" />
+                  </svg>
+                </span>
+                <h2 className="font-serif font-bold text-lg text-[#1c1917]">Thực đơn đã chọn</h2>
               </div>
-              <span className="text-xs sm:text-sm font-bold px-2.5 py-1 bg-green-100 text-green-800 rounded-full">
+              <span className="text-xs font-bold px-2.5 py-1 bg-[#dcfce7] text-[#14532d] rounded-full">
                 {totalItems} món
               </span>
             </div>
 
-            {/* Danh sách món trong giỏ */}
             {cart.length === 0 ? (
               <div className="py-8 text-center">
-                <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto text-2xl text-gray-400 mb-2">
-                  🍽️
+                <div className="w-14 h-14 bg-[#faf8f5] rounded-full border border-[#ebe7df] flex items-center justify-center mx-auto text-stone-400 mb-3">
+                  <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2" />
+                    <path d="M7 2v20" />
+                    <path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7" />
+                  </svg>
                 </div>
-                <p className="text-sm text-gray-600 font-semibold">Chưa chọn món nào</p>
-                <p className="text-xs sm:text-sm text-gray-500 mt-1 leading-relaxed">
+                <p className="text-sm text-[#1c1917] font-semibold">Chưa chọn món nào</p>
+                <p className="text-xs text-stone-500 mt-1 leading-relaxed">
                   Quý khách có thể chọn món ngay, hoặc bấm <strong>&ldquo;Bỏ qua chọn món&rdquo;</strong> bên dưới.
                 </p>
               </div>
             ) : (
               <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
-                {cart.map((item) => (
-                  <div
-                    key={item._id}
-                    className="flex items-center justify-between gap-3 text-sm border-b border-gray-100 pb-3"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1">
-                        {item.isPreOrderOnly && (
-                          <span className="text-amber-600 text-xs shrink-0" title="Món đặc biệt">
-                            👑
-                          </span>
-                        )}
-                        <p className="font-semibold text-gray-900 leading-snug">{item.name}</p>
-                      </div>
-                      <p className="text-gray-500 text-xs mt-0.5">
-                        {formatMoney(item.price)} × {item.quantity} ={' '}
-                        <strong className="text-green-800 font-bold">{formatMoney(item.price * item.quantity)}</strong>
-                      </p>
-                    </div>
+                {cart.map((item, idx) => {
+                  const itemKey = item.cartKey || item._id;
 
-                    {/* Bộ tăng/giảm số lượng */}
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        onClick={() => updateQuantity(item._id, item.quantity - 1)}
-                        className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold flex items-center justify-center text-sm"
-                      >
-                        -
-                      </button>
-                      <span className="w-5 text-center font-bold text-gray-900 text-sm">
-                        {item.quantity}
-                      </span>
-                      <button
-                        onClick={() => updateQuantity(item._id, item.quantity + 1)}
-                        className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold flex items-center justify-center text-sm"
-                      >
-                        +
-                      </button>
+                  return (
+                    <div
+                      key={item.cartKey || `${item._id}-${idx}`}
+                      className="flex items-center justify-between gap-3 text-sm border-b border-[#ebe7df] pb-3"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          {item.isPreOrderOnly && (
+                            <span className="text-[#d97706] shrink-0" title="Món đặc biệt">
+                              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14" />
+                              </svg>
+                            </span>
+                          )}
+                          <p className="font-semibold text-[#1c1917] leading-snug truncate">
+                            {item.name}
+                          </p>
+                        </div>
+                        <p className="text-stone-500 text-xs mt-0.5">
+                          {formatMoney(item.price)} × {item.quantity} ={' '}
+                          <strong className="text-[#14532d] font-bold">
+                            {formatMoney(item.price * item.quantity)}
+                          </strong>
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => updateQuantity(itemKey, item.quantity - 1)}
+                          aria-label={`Giảm ${item.name}`}
+                          className="w-6 h-6 rounded bg-[#faf8f5] hover:bg-[#f5f2eb] border border-[#ebe7df] text-[#1c1917] font-bold flex items-center justify-center text-sm cursor-pointer"
+                        >
+                          -
+                        </button>
+                        <span className="w-5 text-center font-bold text-[#1c1917] text-sm">
+                          {item.quantity}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => updateQuantity(itemKey, item.quantity + 1)}
+                          aria-label={`Tăng ${item.name}`}
+                          className="w-6 h-6 rounded bg-[#faf8f5] hover:bg-[#f5f2eb] border border-[#ebe7df] text-[#1c1917] font-bold flex items-center justify-center text-sm cursor-pointer"
+                        >
+                          +
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            removeFromCart(itemKey);
+                            showToast(`Đã xóa "${item.name}" khỏi thực đơn.`, 'info');
+                          }}
+                          aria-label={`Xóa ${item.name}`}
+                          className="w-6 h-6 ml-0.5 rounded text-stone-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition-colors cursor-pointer"
+                        >
+                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
-            {/* Cảnh báo món đặc biệt nếu có */}
             {hasSpecialItems && (
-              <div className="my-3 p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs sm:text-sm text-amber-900 flex items-center gap-2">
-                <span className="text-base">⭐</span>
+              <div className="my-3 p-3 bg-[#fffbeb] rounded-xl border border-[#fde68a] text-xs text-[#92400e] flex items-center gap-2">
+                <svg className="w-4 h-4 text-[#d97706] shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                </svg>
                 <span>
                   Đã có <strong>{getSpecialItems().length} món đặc quyền</strong> sẽ được chuẩn bị trước.
                 </span>
               </div>
             )}
 
-            {/* Tổng tiền */}
-            <div className="border-t pt-4 mt-4 space-y-2">
-              <div className="flex justify-between text-sm text-gray-600">
+            <div className="border-t border-[#ebe7df] pt-4 mt-4 space-y-2">
+              <div className="flex justify-between text-sm text-stone-600">
                 <span>Số lượng món:</span>
-                <span className="font-bold text-gray-900">{totalItems} phần</span>
+                <span className="font-bold text-[#1c1917]">{totalItems} phần</span>
               </div>
-              <div className="flex justify-between text-base font-bold text-gray-900 pt-1">
+              <div className="flex justify-between text-base font-bold text-[#1c1917] pt-1">
                 <span>Tạm tính thực đơn:</span>
-                <span className="text-green-800 text-lg font-bold">{formatMoney(totalPrice)}</span>
+                <span className="text-[#d97706] font-serif text-lg font-bold">
+                  {formatMoney(totalPrice)}
+                </span>
               </div>
             </div>
 
-            {/* Các nút hành động: RỘNG RÃI, THOÁNG ĐÃNG, KHÔNG BỊ CHẬT HOẶC XUỐNG DÒNG LỖI */}
             <div className="mt-6 space-y-3">
               <button
+                type="button"
                 onClick={handleProceedToConfirm}
-                className="interactive-btn w-full bg-green-800 hover:bg-green-900 text-white font-bold py-3.5 px-4 rounded-xl text-sm sm:text-base shadow-md transition-all flex items-center justify-center gap-2 whitespace-nowrap"
+                className="interactive-btn w-full bg-[#14532d] hover:bg-[#15803d] text-white font-bold py-3.5 px-4 rounded-xl text-sm shadow-md transition-all flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer"
               >
-                <span>Xác nhận thực đơn & Tiếp tục</span>
-                <span className="text-base font-bold">→</span>
+                <span>Xác nhận thực đơn &amp; Tiếp tục</span>
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M5 12h14" />
+                  <path d="m12 5 7 7-7 7" />
+                </svg>
               </button>
 
               <button
+                type="button"
                 onClick={handleSkipDishes}
-                className="interactive-btn w-full bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold py-3 px-4 rounded-xl text-sm transition-colors flex items-center justify-center gap-2 border border-gray-200"
+                className="interactive-btn w-full bg-[#f5f2eb] hover:bg-[#ebe7df] text-[#1c1917] font-semibold py-3 px-4 rounded-xl text-sm transition-colors flex items-center justify-center gap-2 border border-[#d6d0c4] cursor-pointer"
               >
                 <span>Bỏ qua chọn món (Gọi tại bàn)</span>
-                <span className="text-xs">⏩</span>
+                <svg className="w-4 h-4 text-stone-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polygon points="5 4 15 12 5 20 5 4" />
+                  <line x1="19" y1="5" x2="19" y2="19" />
+                </svg>
               </button>
 
               {cart.length > 0 && (
                 <button
-                  onClick={clearCart}
-                  className="w-full text-center text-xs text-red-500 hover:text-red-700 font-medium pt-1"
+                  type="button"
+                  onClick={() => {
+                    clearCart();
+                    showToast('Đã xóa toàn bộ món đã chọn.', 'info');
+                  }}
+                  className="w-full text-center text-xs text-rose-600 hover:text-rose-700 font-medium pt-1 cursor-pointer"
                 >
                   Xóa toàn bộ món đã chọn
                 </button>
               )}
             </div>
 
-            <div className="mt-4 pt-3 border-t border-gray-100 text-center">
+            <div className="mt-4 pt-3 border-t border-[#ebe7df] text-center">
               <Link
                 href="/booking/diagram"
-                className="text-sm font-medium text-gray-500 hover:text-green-800 flex items-center justify-center gap-1"
+                className="text-sm font-medium text-stone-500 hover:text-[#14532d] flex items-center justify-center gap-1.5"
               >
-                <span>←</span>
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M19 12H5" />
+                  <path d="m12 19-7-7 7-7" />
+                </svg>
                 <span>Đổi vị trí bàn khác</span>
               </Link>
             </div>
           </div>
         </div>
-
       </div>
 
-      {/* Thanh Bottom Sticky Bar trên màn hình điện thoại / di động */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-3 shadow-lg z-40 flex items-center justify-between gap-3">
+      {/* Thanh Bottom Sticky Bar trên di động */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-[#ebe7df] p-3 shadow-lg z-40 flex items-center justify-between gap-3">
         <div>
-          <p className="text-[11px] text-gray-500">Đã chọn: {totalItems} món</p>
-          <p className="text-sm font-bold text-green-800">{formatMoney(totalPrice)}</p>
+          <p className="text-[11px] text-stone-500">Đã chọn: {totalItems} món</p>
+          <p className="text-sm font-bold text-[#14532d]">{formatMoney(totalPrice)}</p>
         </div>
         <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={handleSkipDishes}
-            className="text-xs font-semibold px-3 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50"
+            className="text-xs font-semibold px-3 py-2 border border-[#d6d0c4] rounded-lg text-stone-700 hover:bg-[#f5f2eb] cursor-pointer"
           >
             Bỏ qua
           </button>
           <button
+            type="button"
             onClick={handleProceedToConfirm}
-            className="text-xs font-bold px-4 py-2 bg-green-800 text-white rounded-lg hover:bg-green-900 shadow"
+            className="text-xs font-bold px-4 py-2 bg-[#14532d] text-white rounded-lg hover:bg-[#15803d] shadow cursor-pointer inline-flex items-center gap-1"
           >
-            Tiếp tục →
+            <span>Tiếp tục</span>
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M5 12h14" />
+              <path d="m12 5 7 7-7 7" />
+            </svg>
           </button>
         </div>
       </div>
+
+      <SpecialDishModal
+        dish={specialDishModal}
+        onClose={() => setSpecialDishModal(null)}
+      />
     </main>
   );
 }

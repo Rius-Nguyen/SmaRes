@@ -3,40 +3,71 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
+
+interface QrSessionData {
+  tableId?: string;
+  tableNumber?: string;
+  token?: string;
+  orderUrl?: string;
+  qrImageUrl?: string;
+  status?: string;
+}
+
+interface QrSessionResponse {
+  success?: boolean;
+  message?: string;
+  tableStatus?: string;
+  canOrder?: boolean;
+  data?: QrSessionData;
+}
 
 function QrTableContent() {
   const searchParams = useSearchParams();
   const initialTable = (searchParams.get('tableId') || 'B05').toUpperCase();
   const initialStatus = searchParams.get('status') || 'Occupied';
 
-  const [tableId, setTableId] = useState<string>(initialTable);
-  const [tableStatus, setTableStatus] = useState<string>(initialStatus);
-  const [qrData, setQrData] = useState<any>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
+  const [qrState, setQrState] = useState<{
+    key: string;
+    data: QrSessionResponse | null;
+  } | null>(null);
 
-  const loadQrSession = async (targetTable: string, targetStatus: string) => {
-    try {
-      setLoading(true);
-      const res = await fetch(
-        `/api/qr?tableId=${encodeURIComponent(targetTable)}&status=${encodeURIComponent(targetStatus)}`
-      );
-      const data = await res.json();
-      setQrData(data);
-    } catch (err) {
-      console.error('Lỗi tải thông tin QR bàn:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const tableId = initialTable;
+  const activeStatus = selectedStatus ?? initialStatus;
+  const requestKey = `${tableId}|${activeStatus}`;
+  const loading = qrState?.key !== requestKey;
+  const qrData = qrState?.key === requestKey ? qrState.data : null;
 
   useEffect(() => {
-    setTableId(initialTable);
-    setTableStatus(initialStatus);
-    loadQrSession(initialTable, initialStatus);
-  }, [initialTable, initialStatus]);
+    let isCancelled = false;
 
-  const statusNormalized = (qrData?.tableStatus || tableStatus || 'Occupied').toLowerCase();
-  const canOrder = Boolean(qrData?.canOrder);
+    fetch(
+      `/api/qr?tableId=${encodeURIComponent(tableId)}&status=${encodeURIComponent(activeStatus)}`
+    )
+      .then((res) => res.json() as Promise<QrSessionResponse>)
+      .then((data) => {
+        if (!isCancelled) {
+          setQrState({ key: requestKey, data });
+        }
+      })
+      .catch((err) => {
+        console.error('Lỗi tải thông tin QR bàn:', err);
+        if (!isCancelled) {
+          setQrState({ key: requestKey, data: null });
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [tableId, activeStatus, requestKey]);
+
+  const statusNormalized = (qrData?.tableStatus || activeStatus || 'Occupied').toLowerCase();
+  const canOrder =
+    typeof qrData?.canOrder === 'boolean'
+      ? qrData.canOrder
+      : statusNormalized === 'occupied' || statusNormalized === 'seated';
   const session = qrData?.data || {};
 
   return (
@@ -54,10 +85,7 @@ function QrTableContent() {
             <button
               key={st}
               type="button"
-              onClick={() => {
-                setTableStatus(st);
-                loadQrSession(tableId, st);
-              }}
+              onClick={() => setSelectedStatus(st)}
               className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition cursor-pointer ${
                 statusNormalized === st.toLowerCase()
                   ? 'bg-emerald-700 text-white border-emerald-700'
@@ -95,9 +123,12 @@ function QrTableContent() {
             {/* Khung mã QR động khi bàn đang Occupied */}
             {statusNormalized === 'occupied' && session?.qrImageUrl && (
               <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 mb-5">
-                <img
+                <Image
                   src={session.qrImageUrl}
                   alt={`Mã QR Bàn ${tableId}`}
+                  width={160}
+                  height={160}
+                  unoptimized
                   className="w-40 h-40 mx-auto rounded-xl bg-white p-2 border border-gray-200"
                 />
                 <p className="mt-3 text-[11px] text-gray-500 font-semibold uppercase">
@@ -117,14 +148,14 @@ function QrTableContent() {
             {/* Nút hành động phù hợp từng trạng thái */}
             {canOrder ? (
               <Link
-                href={`/menu?tableId=${tableId}&token=${session.token || ''}`}
+                href={`/table-menu?table=${encodeURIComponent(tableId)}&token=${encodeURIComponent(session.token || '')}`}
                 className="block w-full py-3.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm transition shadow-sm"
               >
                 🍽️ Vào thực đơn gọi thêm món
               </Link>
             ) : statusNormalized === 'available' ? (
               <Link
-                href={`/booking?tableId=${tableId}`}
+                href={`/booking?tableId=${encodeURIComponent(tableId)}`}
                 className="block w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition shadow-sm"
               >
                 🪑 Đặt bàn / Nhận bàn {tableId}
@@ -132,7 +163,7 @@ function QrTableContent() {
             ) : (
               <button
                 type="button"
-                onClick={() => loadQrSession(tableId, 'Occupied')}
+                onClick={() => setSelectedStatus('Occupied')}
                 className="w-full py-3.5 rounded-xl bg-gray-800 hover:bg-gray-900 text-white font-bold text-sm transition cursor-pointer"
               >
                 🔄 Kiểm tra lại khi bàn dọn xong

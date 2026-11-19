@@ -1,33 +1,42 @@
 import { Schema, model, models, Model, Types } from 'mongoose';
 
-export type ReservationStatus = 'pending' | 'confirmed' | 'cancelled' | 'completed';
-export type PaymentStatus = 'UNPAID' | 'PENDING' | 'PAID' | 'FAILED' | 'EXPIRED' | 'REFUNDED';
+export const ReservationStatus = {
+  CONFIRMED: 'CONFIRMED',
+  CHECKED_IN: 'CHECKED_IN',
+  COMPLETED: 'COMPLETED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export type ReservationStatus = (typeof ReservationStatus)[keyof typeof ReservationStatus];
+
+export const PaymentStatus = {
+  UNPAID: 'UNPAID',
+  PENDING: 'PENDING',
+  PAID: 'PAID',
+  FAILED: 'FAILED',
+  EXPIRED: 'EXPIRED',
+  REFUNDED: 'REFUNDED',
+} as const;
+
+export type PaymentStatus = (typeof PaymentStatus)[keyof typeof PaymentStatus];
 
 export interface IReservation {
-  _id?: Types.ObjectId | string;
+  _id?: string;
   userId?: Types.ObjectId | string | null;
   tableId: Types.ObjectId | string;
-  tableNumber?: string;
-
-  // Thời gian & Thông tin liên hệ (hỗ trợ cả chuẩn camelCase và legacy API fields)
-  reservationDate?: Date;
-  date?: string;
-  timeSlot?: string;
-  time?: string;
+  tableNumber: string;
+  customerName: string;
+  phone: string;
+  date: string;
+  time: string;
   guests: number;
-  contactPhone?: string;
-  phone?: string;
   note?: string;
   bookingCode: string;
-
-  // Trạng thái đơn đặt bàn
   status: ReservationStatus;
-
-  // [TK-125] Đặt cọc & Thanh toán (tương thích ngược, default an toàn)
+  checkInTime?: Date | null;
   depositAmount?: number;
   paymentStatus?: PaymentStatus;
   holdExpiresAt?: Date | null;
-
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -49,21 +58,27 @@ const ReservationSchema = new Schema<IReservation>(
     tableNumber: {
       type: String,
       trim: true,
+      uppercase: true,
+      default: '',
     },
-    reservationDate: {
-      type: Date,
-      default: null,
+    customerName: {
+      type: String,
+      trim: true,
+      default: 'Khách tại bàn',
+    },
+    phone: {
+      type: String,
+      required: [true, 'Vui lòng nhập số điện thoại liên hệ'],
+      trim: true,
     },
     date: {
       type: String,
-      trim: true,
-    },
-    timeSlot: {
-      type: String,
+      required: [true, 'Vui lòng chọn ngày đặt bàn'],
       trim: true,
     },
     time: {
       type: String,
+      required: [true, 'Vui lòng chọn khung giờ đặt bàn'],
       trim: true,
     },
     guests: {
@@ -71,33 +86,27 @@ const ReservationSchema = new Schema<IReservation>(
       required: [true, 'Vui lòng nhập số lượng khách'],
       min: [1, 'Số lượng khách tối thiểu là 1'],
     },
-    contactPhone: {
-      type: String,
-      trim: true,
-    },
-    phone: {
-      type: String,
-      trim: true,
-    },
     note: {
       type: String,
-      default: '',
       trim: true,
+      default: '',
     },
     bookingCode: {
       type: String,
       required: [true, 'Vui lòng tạo mã đặt bàn'],
       unique: true,
       trim: true,
+      uppercase: true,
     },
     status: {
       type: String,
-      enum: {
-        values: ['pending', 'confirmed', 'cancelled', 'completed'],
-        message: 'Trạng thái đặt bàn không hợp lệ: {VALUE}',
-      },
-      default: 'confirmed',
+      enum: Object.values(ReservationStatus),
+      default: ReservationStatus.CONFIRMED,
       index: true,
+    },
+    checkInTime: {
+      type: Date,
+      default: null,
     },
     depositAmount: {
       type: Number,
@@ -106,11 +115,8 @@ const ReservationSchema = new Schema<IReservation>(
     },
     paymentStatus: {
       type: String,
-      enum: {
-        values: ['UNPAID', 'PENDING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED'],
-        message: 'Trạng thái thanh toán không hợp lệ: {VALUE}',
-      },
-      default: 'UNPAID',
+      enum: Object.values(PaymentStatus),
+      default: PaymentStatus.UNPAID,
       index: true,
     },
     holdExpiresAt: {
@@ -125,9 +131,22 @@ const ReservationSchema = new Schema<IReservation>(
   }
 );
 
-// Tối ưu tra cứu bàn theo ngày, giờ và trạng thái
-ReservationSchema.index({ date: 1, time: 1, status: 1 });
-ReservationSchema.index({ reservationDate: 1, timeSlot: 1, status: 1 });
+ReservationSchema.index(
+  { tableId: 1, date: 1, time: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      status: {
+        $in: [
+          ReservationStatus.CONFIRMED,
+          ReservationStatus.CHECKED_IN,
+          ReservationStatus.COMPLETED,
+        ],
+      },
+    },
+    name: 'uniq_active_table_slot',
+  }
+);
 
 const Reservation: Model<IReservation> =
   models.Reservation || model<IReservation>('Reservation', ReservationSchema);

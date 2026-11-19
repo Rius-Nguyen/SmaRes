@@ -1,40 +1,18 @@
 import { NextResponse } from 'next/server';
-import jwt from 'jsonwebtoken';
 import connectDB from '@/app/lib/db';
 import User from '@/app/models/User';
-
-interface JwtPayload {
-  userId: string;
-  email: string;
-  role: string;
-}
+import { requireAuth } from '@/app/lib/auth';
 
 export async function GET(request: Request) {
   try {
+    const auth = requireAuth(request);
+    if (auth.errorResponse) {
+      return auth.errorResponse;
+    }
+
     await connectDB();
 
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json(
-        { success: false, message: 'Yêu cầu cung cấp Token xác thực (Unauthorized).' },
-        { status: 401 }
-      );
-    }
-
-    const token = authHeader.split(' ')[1];
-    const secretKey = process.env.JWT_SECRET || 'KhoaBaoMat_SmaRes_2026_@!#';
-
-    let decoded: JwtPayload;
-    try {
-      decoded = jwt.verify(token, secretKey) as JwtPayload;
-    } catch {
-      return NextResponse.json(
-        { success: false, message: 'Token không hợp lệ hoặc đã hết hạn.' },
-        { status: 401 }
-      );
-    }
-
-    const user = await User.findById(decoded.userId).select('-password');
+    const user = await User.findById(auth.user.userId).select('-password');
     if (!user) {
       return NextResponse.json(
         { success: false, message: 'Không tìm thấy thông tin người dùng.' },

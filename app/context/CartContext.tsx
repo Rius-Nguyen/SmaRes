@@ -1,26 +1,24 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useSyncExternalStore,
+} from 'react';
+import {
+  addItemToCartList,
+  migrateCartItems,
+  removeItemFromCartList,
+  updateItemQuantityInCartList,
+  type AddCartItemInput,
+  type CartItem,
+  type ItemCustomizations,
+} from '@/app/lib/cartHelpers';
 
-// 1. Cấu trúc tùy biến món (TK-160)
-export interface ItemCustomizations {
-  spicy_level?: 'NONE' | 'MILD' | 'MEDIUM' | 'HOT';
-  ice_level?: '0%' | '50%' | '100%';
-  sweetness_level?: '0%' | '50%' | '100%';
-  allergy_notes?: string;
-}
-
-// Cấu trúc món ăn trong giỏ hàng
-export interface CartItem {
-  _id: string;
-  name: string;
-  price: number;
-  imageUrl: string;
-  category: string;
-  isPreOrderOnly?: boolean;
-  quantity: number;
-  customizations?: ItemCustomizations;
-}
+export type { ItemCustomizations, CartItem };
 
 // Cấu trúc thông tin đặt bàn trong luồng workflow
 export interface BookingInfo {
@@ -42,12 +40,12 @@ export interface BookingInfo {
   paymentStatus?: string;
 }
 
-// 2. Kiểu dữ liệu cho Cart Context
+// Kiểu dữ liệu cho Cart Context
 interface CartContextType {
   cart: CartItem[];
-  addToCart: (item: Omit<CartItem, 'quantity'>, quantity?: number) => void;
-  removeFromCart: (itemId: string) => void;
-  updateQuantity: (itemId: string, quantity: number) => void;
+  addToCart: (item: AddCartItemInput, quantity?: number) => void;
+  removeFromCart: (cartKeyOrId: string) => void;
+  updateQuantity: (cartKeyOrId: string, quantity: number) => void;
   clearCart: () => void;
   totalItems: number;
   totalPrice: number;
@@ -69,160 +67,230 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 
 const LOCAL_STORAGE_KEY = 'smares_cart';
 const LOCAL_STORAGE_BOOKING_KEY = 'smares_booking_draft';
+const EMPTY_CART: CartItem[] = [];
+
+const storageListeners = new Set<() => void>();
+const memoryFallback = new Map<string, string>();
+
+const emptySubscribe = () => () => {};
+
+function subscribeStorage(listener: () => void): () => void {
+  storageListeners.add(listener);
+  if (typeof window !== 'undefined') {
+    window.addEventListener('storage', listener);
+  }
+  return () => {
+    storageListeners.delete(listener);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('storage', listener);
+    }
+  };
+}
+
+function readStorageRaw(key: string): string | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return memoryFallback.get(key) ?? null;
+  }
+}
+
+function writeStorageRaw(key: string, value: string | null): void {
+  if (typeof window !== 'undefined') {
+    try {
+      if (value === null) {
+        window.localStorage.removeItem(key);
+      } else {
+        window.localStorage.setItem(key, value);
+      }
+      memoryFallback.delete(key);
+    } catch {
+      if (value === null) {
+        memoryFallback.delete(key);
+      } else {
+        memoryFallback.set(key, value);
+      }
+    }
+  } else if (value === null) {
+    memoryFallback.delete(key);
+  } else {
+    memoryFallback.set(key, value);
+  }
+
+  storageListeners.forEach((listener) => listener());
+}
+
+function parseAndMigrateCart(raw: string | null): CartItem[] {
+  if (!raw) {
+    return EMPTY_CART;
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    const migrated = migrateCartItems(parsed);
+    return migrated.length > 0 ? migrated : EMPTY_CART;
+  } catch {
+    return EMPTY_CART;
+  }
+}
+
+function parseBookingInfo(raw: string | null): BookingInfo | null {
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return null;
+    }
+    return parsed as BookingInfo;
+  } catch {
+    return null;
+  }
+}
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [bookingInfo, setBookingInfoState] = useState<BookingInfo | null>(null);
-  const [isLoaded, setIsLoaded] = useState(false);
-
-  // 1. Khôi phục giỏ hàng và thông tin đặt bàn từ localStorage khi load trang lần đầu
-  useEffect(() => {
-    try {
-      const savedCart = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (savedCart) {
-        setCart(JSON.parse(savedCart));
-      }
-
-      const savedBooking = localStorage.getItem(LOCAL_STORAGE_BOOKING_KEY);
-      if (savedBooking) {
-        setBookingInfoState(JSON.parse(savedBooking));
-      }
-    } catch (error) {
-      console.error('Lỗi khi đọc dữ liệu từ localStorage:', error);
-    } finally {
-      setIsLoaded(true);
-    }
-  }, []);
-
-  // 2. Tự động lưu giỏ hàng vào localStorage khi có thay đổi (chỉ sau khi đã load xong)
-  useEffect(() => {
-    if (isLoaded) {
-      try {
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(cart));
-      } catch (error) {
-        console.error('Lỗi khi lưu giỏ hàng vào localStorage:', error);
-      }
-    }
-  }, [cart, isLoaded]);
-
-  // 3. Tự động lưu thông tin đặt bàn vào localStorage
-  useEffect(() => {
-    if (isLoaded) {
-      try {
-        if (bookingInfo) {
-          localStorage.setItem(LOCAL_STORAGE_BOOKING_KEY, JSON.stringify(bookingInfo));
-        } else {
-          localStorage.removeItem(LOCAL_STORAGE_BOOKING_KEY);
-        }
-      } catch (error) {
-        console.error('Lỗi khi lưu thông tin đặt bàn vào localStorage:', error);
-      }
-    }
-  }, [bookingInfo, isLoaded]);
-
-  // Cập nhật thông tin đặt bàn
-  const setBookingInfo = (
-    info: BookingInfo | null | ((prev: BookingInfo | null) => BookingInfo | null)
-  ) => {
-    setBookingInfoState(info);
-  };
-
-  // Xóa thông tin đặt bàn
-  const clearBookingInfo = () => {
-    setBookingInfoState(null);
-    try {
-      localStorage.removeItem(LOCAL_STORAGE_BOOKING_KEY);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  // Thêm món vào giỏ (hỗ trợ phân biệt tùy biến món - TK-160)
-  const addToCart = (item: Omit<CartItem, 'quantity'>, quantity: number = 1) => {
-    setCart((prevCart) => {
-      const existingIndex = prevCart.findIndex(
-        (i) =>
-          i._id === item._id &&
-          JSON.stringify(i.customizations || {}) === JSON.stringify(item.customizations || {})
-      );
-      if (existingIndex > -1) {
-        const newCart = [...prevCart];
-        newCart[existingIndex] = {
-          ...newCart[existingIndex],
-          quantity: newCart[existingIndex].quantity + quantity,
-        };
-        return newCart;
-      }
-      return [...prevCart, { ...item, quantity }];
-    });
-  };
-
-  // Xóa món khỏi giỏ
-  const removeFromCart = (itemId: string) => {
-    setCart((prevCart) => prevCart.filter((item) => item._id !== itemId));
-  };
-
-  // Cập nhật số lượng món
-  const updateQuantity = (itemId: string, quantity: number) => {
-    if (quantity <= 0) {
-      removeFromCart(itemId);
-      return;
-    }
-    setCart((prevCart) =>
-      prevCart.map((item) =>
-        item._id === itemId ? { ...item, quantity } : item
-      )
-    );
-  };
-
-  // Làm sạch giỏ hàng
-  const clearCart = () => {
-    setCart([]);
-  };
-
-  // Tổng số lượng món trong giỏ
-  const totalItems = cart.reduce((total, item) => total + item.quantity, 0);
-
-  // Tổng tiền giỏ hàng
-  const totalPrice = cart.reduce(
-    (total, item) => total + item.price * item.quantity,
-    0
+  const isLoaded = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
   );
 
-  // Helper: Đã hoàn tất chọn thông tin và chọn bàn (Bước 1 & Bước 2)
+  const rawCart = useSyncExternalStore(
+    subscribeStorage,
+    () => readStorageRaw(LOCAL_STORAGE_KEY),
+    () => null
+  );
+
+  const rawBooking = useSyncExternalStore(
+    subscribeStorage,
+    () => readStorageRaw(LOCAL_STORAGE_BOOKING_KEY),
+    () => null
+  );
+
+  const cart = useMemo(() => parseAndMigrateCart(rawCart), [rawCart]);
+  const bookingInfo = useMemo(() => parseBookingInfo(rawBooking), [rawBooking]);
+
+  // Persist migrated cartKey structure back to localStorage when legacy items are loaded
+  useEffect(() => {
+    if (!isLoaded || rawCart === null) {
+      return;
+    }
+    const serialized = JSON.stringify(cart);
+    if (rawCart !== serialized) {
+      try {
+        window.localStorage.setItem(LOCAL_STORAGE_KEY, serialized);
+      } catch {
+        // Ignore storage quota errors during background migration
+      }
+    }
+  }, [isLoaded, rawCart, cart]);
+
+  const setBookingInfo = useCallback(
+    (info: BookingInfo | null | ((prev: BookingInfo | null) => BookingInfo | null)) => {
+      const current = parseBookingInfo(readStorageRaw(LOCAL_STORAGE_BOOKING_KEY));
+      const next = typeof info === 'function' ? info(current) : info;
+      writeStorageRaw(
+        LOCAL_STORAGE_BOOKING_KEY,
+        next ? JSON.stringify(next) : null
+      );
+    },
+    []
+  );
+
+  const clearBookingInfo = useCallback(() => {
+    writeStorageRaw(LOCAL_STORAGE_BOOKING_KEY, null);
+  }, []);
+
+  const addToCart = useCallback((item: AddCartItemInput, quantity: number = 1) => {
+    const current = parseAndMigrateCart(readStorageRaw(LOCAL_STORAGE_KEY));
+    const next = addItemToCartList(current, item, quantity);
+    writeStorageRaw(LOCAL_STORAGE_KEY, JSON.stringify(next));
+  }, []);
+
+  const removeFromCart = useCallback((cartKeyOrId: string) => {
+    const current = parseAndMigrateCart(readStorageRaw(LOCAL_STORAGE_KEY));
+    const next = removeItemFromCartList(current, cartKeyOrId);
+    writeStorageRaw(LOCAL_STORAGE_KEY, JSON.stringify(next));
+  }, []);
+
+  const updateQuantity = useCallback((cartKeyOrId: string, quantity: number) => {
+    const current = parseAndMigrateCart(readStorageRaw(LOCAL_STORAGE_KEY));
+    const next = updateItemQuantityInCartList(current, cartKeyOrId, quantity);
+    writeStorageRaw(LOCAL_STORAGE_KEY, JSON.stringify(next));
+  }, []);
+
+  const clearCart = useCallback(() => {
+    writeStorageRaw(LOCAL_STORAGE_KEY, JSON.stringify(EMPTY_CART));
+  }, []);
+
+  const totalItems = useMemo(
+    () => cart.reduce((total, item) => total + item.quantity, 0),
+    [cart]
+  );
+
+  const totalPrice = useMemo(
+    () => cart.reduce((total, item) => total + item.price * item.quantity, 0),
+    [cart]
+  );
+
   const hasActiveBooking = Boolean(
     bookingInfo && bookingInfo.tableNumber && bookingInfo.name && bookingInfo.phone
   );
 
-  // Helper: Kiểm tra giỏ hàng có món đặc biệt (isPreOrderOnly) hay không
-  const hasSpecialItems = cart.some((item) => item.isPreOrderOnly === true);
+  const hasSpecialItems = useMemo(
+    () => cart.some((item) => item.isPreOrderOnly === true),
+    [cart]
+  );
 
-  // Helper: Lấy danh sách các món đặc biệt trong giỏ hàng
-  const getSpecialItems = () => cart.filter((item) => item.isPreOrderOnly === true);
+  const getSpecialItems = useCallback(
+    () => cart.filter((item) => item.isPreOrderOnly === true),
+    [cart]
+  );
 
-  // Helper: Kiểm tra người dùng có đủ điều kiện đặt món đặc biệt hay không (phải có đơn đặt bàn đã chọn bàn)
-  const canAddPreOrderItem = () => hasActiveBooking;
+  const canAddPreOrderItem = useCallback(() => hasActiveBooking, [hasActiveBooking]);
+
+  const contextValue = useMemo<CartContextType>(
+    () => ({
+      cart,
+      addToCart,
+      removeFromCart,
+      updateQuantity,
+      clearCart,
+      totalItems,
+      totalPrice,
+      isLoaded,
+      bookingInfo,
+      setBookingInfo,
+      clearBookingInfo,
+      hasActiveBooking,
+      hasSpecialItems,
+      getSpecialItems,
+      canAddPreOrderItem,
+    }),
+    [
+      cart,
+      addToCart,
+      removeFromCart,
+      updateQuantity,
+      clearCart,
+      totalItems,
+      totalPrice,
+      isLoaded,
+      bookingInfo,
+      setBookingInfo,
+      clearBookingInfo,
+      hasActiveBooking,
+      hasSpecialItems,
+      getSpecialItems,
+      canAddPreOrderItem,
+    ]
+  );
 
   return (
-    <CartContext.Provider
-      value={{
-        cart,
-        addToCart,
-        removeFromCart,
-        updateQuantity,
-        clearCart,
-        totalItems,
-        totalPrice,
-        isLoaded,
-        bookingInfo,
-        setBookingInfo,
-        clearBookingInfo,
-        hasActiveBooking,
-        hasSpecialItems,
-        getSpecialItems,
-        canAddPreOrderItem,
-      }}
-    >
+    <CartContext.Provider value={contextValue}>
       {children}
     </CartContext.Provider>
   );

@@ -46,7 +46,7 @@ export async function GET(
         );
       }
 
-      targetReservationId = (reservationByCode._id as Types.ObjectId).toString();
+      targetReservationId = String(reservationByCode._id);
     }
 
     // Lấy danh sách giao dịch, loại trừ rawResponse để bảo mật dữ liệu webhook

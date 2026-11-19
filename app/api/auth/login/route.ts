@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import jwt from 'jsonwebtoken';
 import connectDB from '@/app/lib/db';
 import User from '@/app/models/User';
+import { signAuthToken, getAuthCookieOptions } from '@/app/lib/auth';
 
 export async function POST(request: Request) {
   try {
@@ -43,23 +43,17 @@ export async function POST(request: Request) {
     }
 
     // 4. Tạo JWT Token
-    const secretKey = process.env.JWT_SECRET || 'KhoaBaoMat_SmaRes_2026_@!#';
-    const token = jwt.sign(
-      {
-        userId: user._id.toString(),
-        email: user.email,
-        role: user.role,
-      },
-      secretKey,
-      { expiresIn: '1d' }
-    );
+    const token = signAuthToken({
+      userId: user._id.toString(),
+      email: user.email,
+      role: user.role,
+    });
 
-    // 5. Trả về token và thông tin người dùng kèm HTTP Cookie
+    // 5. Trả về thông tin người dùng và gắn token vào HttpOnly Cookie
     const response = NextResponse.json(
       {
         success: true,
         message: 'Đăng nhập thành công!',
-        token,
         user: {
           id: user._id,
           name: user.name,
@@ -71,14 +65,9 @@ export async function POST(request: Request) {
       { status: 200 }
     );
 
-    // Lưu token vào cookie để các trang Staff và API backend đều nhận diện được
     response.cookies.set({
-      name: 'token',
+      ...getAuthCookieOptions(),
       value: token,
-      httpOnly: false,
-      path: '/',
-      maxAge: 86400,
-      sameSite: 'lax',
     });
 
     return response;

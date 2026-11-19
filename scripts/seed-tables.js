@@ -9,15 +9,18 @@ async function seedTables() {
   await db.collection('tables').deleteMany({});
   await db.collection('reservations').deleteMany({ bookingCode: { $regex: '^TK142' } });
 
+  const now = new Date();
+  const todayDate = now.toISOString().slice(0, 10);
+
   const tables = [
-    { table_number: 'B01', tableNumber: 'B01', capacity: 4, zone_name: 'Khu Trung Tâm', status: 'AVAILABLE', createdAt: new Date(), updatedAt: new Date() },
-    { table_number: 'B02', tableNumber: 'B02', capacity: 4, zone_name: 'Khu Ban Công', status: 'RESERVED', createdAt: new Date(), updatedAt: new Date() },
-    { table_number: 'B03', tableNumber: 'B03', capacity: 2, zone_name: 'Khu Cửa Sổ', status: 'CLEANING', createdAt: new Date(), updatedAt: new Date() },
-    { table_number: 'B04', tableNumber: 'B04', capacity: 6, zone_name: 'Khu VIP 1', status: 'SEATED', createdAt: new Date(), updatedAt: new Date() },
-    { table_number: '04', tableNumber: '04', capacity: 4, zone_name: 'Khu Vực Chính', status: 'SEATED', createdAt: new Date(), updatedAt: new Date() },
-    { table_number: '01', tableNumber: '01', capacity: 2, zone_name: 'Khu Vực Chính', status: 'AVAILABLE', createdAt: new Date(), updatedAt: new Date() },
-    { table_number: '02', tableNumber: '02', capacity: 4, zone_name: 'Khu Vực Chính', status: 'RESERVED', createdAt: new Date(), updatedAt: new Date() },
-    { table_number: '03', tableNumber: '03', capacity: 4, zone_name: 'Khu Vực Chính', status: 'CLEANING', createdAt: new Date(), updatedAt: new Date() },
+    { tableNumber: 'B01', capacity: 4, zoneName: 'Khu Trung Tâm', status: 'AVAILABLE', qrToken: null, createdAt: now, updatedAt: now },
+    { tableNumber: 'B02', capacity: 4, zoneName: 'Khu Ban Công', status: 'RESERVED', qrToken: null, createdAt: now, updatedAt: now },
+    { tableNumber: 'B03', capacity: 2, zoneName: 'Khu Cửa Sổ', status: 'CLEANING', qrToken: null, createdAt: now, updatedAt: now },
+    { tableNumber: 'B04', capacity: 6, zoneName: 'Khu VIP 1', status: 'SEATED', qrToken: null, createdAt: now, updatedAt: now },
+    { tableNumber: '04', capacity: 4, zoneName: 'Khu Vực Chính', status: 'SEATED', qrToken: null, createdAt: now, updatedAt: now },
+    { tableNumber: '01', capacity: 2, zoneName: 'Khu Vực Chính', status: 'AVAILABLE', qrToken: null, createdAt: now, updatedAt: now },
+    { tableNumber: '02', capacity: 4, zoneName: 'Khu Vực Chính', status: 'RESERVED', qrToken: null, createdAt: now, updatedAt: now },
+    { tableNumber: '03', capacity: 4, zoneName: 'Khu Vực Chính', status: 'CLEANING', qrToken: null, createdAt: now, updatedAt: now },
   ];
 
   const tableRes = await db.collection('tables').insertMany(tables);
@@ -28,35 +31,37 @@ async function seedTables() {
 
   const reservations = [
     {
-      table_id: b04Id,
-      table_number: 'B04',
+      userId: null,
+      tableId: b04Id,
       tableNumber: 'B04',
-      customer_name: 'Nguyễn Văn Thịnh',
-      customer_phone: '0901234567',
+      customerName: 'Nguyễn Văn Thịnh',
+      phone: '0901234567',
+      date: todayDate,
+      time: '19:00',
+      guests: 4,
+      note: '',
       bookingCode: 'TK142_B04',
       status: 'CHECKED_IN',
-      reservationDate: new Date(),
-      timeSlot: '19:00 - 21:00',
-      guests: 4,
-      check_in_time: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date()
+      checkInTime: now,
+      createdAt: now,
+      updatedAt: now,
     },
     {
-      table_id: t04Id,
-      table_number: '04',
+      userId: null,
+      tableId: t04Id,
       tableNumber: '04',
-      customer_name: 'Khách VIP SmaRes',
-      customer_phone: '0908889999',
+      customerName: 'Khách VIP SmaRes',
+      phone: '0908889999',
+      date: todayDate,
+      time: '18:30',
+      guests: 2,
+      note: '',
       bookingCode: 'TK142_04',
       status: 'CHECKED_IN',
-      reservationDate: new Date(),
-      timeSlot: '18:30 - 20:30',
-      guests: 2,
-      check_in_time: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date()
-    }
+      checkInTime: now,
+      createdAt: now,
+      updatedAt: now,
+    },
   ];
 
   await db.collection('reservations').insertMany(reservations);
@@ -64,7 +69,7 @@ async function seedTables() {
   process.exit(0);
 }
 
-seedTables().catch(err => {
+seedTables().catch((err) => {
   console.error('Seed error:', err);
   process.exit(1);
 });

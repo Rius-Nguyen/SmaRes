@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getAuthCookieOptions } from '@/app/lib/auth';
 
 export async function POST() {
   const response = NextResponse.json(
@@ -6,13 +7,11 @@ export async function POST() {
     { status: 200 }
   );
 
-  // Xóa cookie nếu có sử dụng
+  // Xóa HttpOnly auth cookie với đầy đủ thuộc tính khớp lúc set
   response.cookies.set({
-    name: 'token',
+    ...getAuthCookieOptions(0),
     value: '',
-    httpOnly: true,
     expires: new Date(0),
-    path: '/',
   });
 
   return response;

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 
 interface DepositPaymentModalProps {
   isOpen: boolean;
@@ -11,24 +12,17 @@ interface DepositPaymentModalProps {
   isProcessing?: boolean;
 }
 
-export default function DepositPaymentModal({
-  isOpen,
+function DepositPaymentModalContent({
   onClose,
   bookingCode,
   depositAmount,
   onConfirmPayment,
   isProcessing = false,
-}: DepositPaymentModalProps) {
-  // Đồng hồ đếm ngược 10 phút (600 giây)
+}: Omit<DepositPaymentModalProps, 'isOpen'>) {
   const [timeLeft, setTimeLeft] = useState<number>(600);
   const [copied, setCopied] = useState<boolean>(false);
 
   useEffect(() => {
-    if (!isOpen) {
-      setTimeLeft(600);
-      return;
-    }
-
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
@@ -40,9 +34,7 @@ export default function DepositPaymentModal({
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isOpen]);
-
-  if (!isOpen) return null;
+  }, []);
 
   const minutes = Math.floor(timeLeft / 60);
   const seconds = timeLeft % 60;
@@ -58,7 +50,6 @@ export default function DepositPaymentModal({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Fallback nếu trình duyệt chặn clipboard API
       const input = document.createElement('input');
       input.value = bookingCode;
       document.body.appendChild(input);
@@ -84,6 +75,7 @@ export default function DepositPaymentModal({
             </h3>
           </div>
           <button
+            type="button"
             onClick={onClose}
             disabled={isProcessing}
             className="w-9 h-9 rounded-full bg-white hover:bg-stone-100 border border-[#ebe7df] flex items-center justify-center text-stone-500 hover:text-stone-800 transition-colors cursor-pointer"
@@ -110,9 +102,11 @@ export default function DepositPaymentModal({
 
           {/* Ảnh QR ngân hàng thật */}
           <div className="bg-[#faf8f5] p-3 rounded-2xl border border-[#ebe7df] inline-block mx-auto shadow-xs">
-            <img
+            <Image
               src="/img/bank_qr.jpg"
               alt="Mã QR Thanh toán tiền cọc"
+              width={240}
+              height={240}
               className="w-56 h-56 sm:w-60 sm:h-60 object-contain mx-auto rounded-xl"
             />
           </div>
@@ -192,4 +186,12 @@ export default function DepositPaymentModal({
       </div>
     </div>
   );
+}
+
+export default function DepositPaymentModal({
+  isOpen,
+  ...props
+}: DepositPaymentModalProps) {
+  if (!isOpen) return null;
+  return <DepositPaymentModalContent {...props} />;
 }
