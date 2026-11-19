@@ -18,6 +18,8 @@ interface LastBookingSnapshot {
   phone?: string;
   totalPrice?: number;
   itemCount?: number;
+  depositAmount?: number;
+  paymentStatus?: string;
 }
 
 interface QrApiResponse {
@@ -90,6 +92,9 @@ function BookingSuccessContent() {
   const phone = activeSnapshot?.phone || '';
   const itemCount = typeof activeSnapshot?.itemCount === 'number' ? activeSnapshot.itemCount : 0;
   const totalPrice = typeof activeSnapshot?.totalPrice === 'number' ? activeSnapshot.totalPrice : 0;
+  const depositAmount =
+    typeof activeSnapshot?.depositAmount === 'number' ? activeSnapshot.depositAmount : 0;
+  const paymentStatus = activeSnapshot?.paymentStatus || '';
 
   const [qrState, setQrState] = useState<QrFetchState | null>(null);
   const [copied, setCopied] = useState(false);
@@ -245,6 +250,15 @@ function BookingSuccessContent() {
                   <span className="text-stone-400 italic">Gọi món tại bàn</span>
                 )}
               </li>
+              {depositAmount > 0 && (
+                <li>
+                  <span className="font-semibold text-stone-800">Tiền cọc giữ bàn:</span>{' '}
+                  <span className="text-[#15803d] font-bold">
+                    {formatMoney(depositAmount)}{' '}
+                    {paymentStatus === 'PAID' ? '(Đã thanh toán)' : '(Đang xác nhận)'}
+                  </span>
+                </li>
+              )}
               <li>
                 <span className="font-semibold text-stone-800">Địa chỉ:</span> SmaRes - Quận 1, TP.HCM
               </li>

@@ -1,10 +1,14 @@
 @import "tailwindcss";
 
 :root {
-  --background: #faf8f5;
+  --background: #f4f7f5;
   --foreground: #1c1917;
-  --color-primary-800: #14532d;
+  --color-primary: #155e42;
+  --color-primary-hover: #0e3f2d;
+  --color-primary-800: #155e42;
+  --color-secondary: #d97706;
   --color-accent-600: #d97706;
+  --color-surface: #ffffff;
 }
 
 @theme inline {
@@ -53,45 +57,66 @@ input:disabled,
   cursor: not-allowed !important;
 }
 
-/* Hiệu ứng nút bấm nhẹ nhàng tinh tế (Subtle Interactive Button) */
-.interactive-btn {
-  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+/* Hiệu ứng nút bấm nhẹ nhàng tinh tế */
+.interactive-btn,
+.btn-smares-primary {
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow 0.2s cubic-bezier(0.22, 1, 0.36, 1),
               background-color 0.2s ease,
               color 0.2s ease,
               border-color 0.2s ease;
   will-change: transform;
 }
 
-.interactive-btn:hover:not(:disabled) {
-  transform: translateY(-1.5px) scale(1.02);
-  box-shadow: 0 8px 20px -4px rgba(20, 83, 45, 0.18);
+.interactive-btn:hover:not(:disabled),
+.btn-smares-primary:hover:not(:disabled) {
+  transform: translateY(-1.5px) scale(1.01);
+  box-shadow: 0 8px 20px -4px rgba(21, 94, 66, 0.24);
 }
 
-.interactive-btn:active:not(:disabled) {
-  transform: translateY(0) scale(0.98);
+.interactive-btn:active:not(:disabled),
+.btn-smares-primary:active:not(:disabled) {
+  transform: translateY(0) scale(0.96);
 }
 
-/* Hiệu ứng thẻ card món ăn nổi nhẹ tinh tế (Subtle Interactive Card) */
-.interactive-card {
-  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+.btn-smares-primary {
+  background-color: var(--color-primary);
+  color: #ffffff;
+  border-radius: 0.75rem;
+}
+
+.btn-smares-primary:hover:not(:disabled) {
+  background-color: var(--color-primary-hover);
+}
+
+/* Hiệu ứng thẻ món ăn & bo góc chuẩn */
+.interactive-card,
+.food-card-smares {
+  border-radius: 1.25rem;
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow 0.28s cubic-bezier(0.22, 1, 0.36, 1),
               border-color 0.25s ease;
   will-change: transform, box-shadow;
 }
 
-.interactive-card:hover {
+.interactive-card:hover,
+.food-card-smares:hover {
   transform: translateY(-4px);
-  box-shadow: 0 16px 32px -6px rgba(28, 25, 23, 0.08), 0 4px 12px -2px rgba(28, 25, 23, 0.04);
+  box-shadow: 0 14px 28px -8px rgba(14, 63, 45, 0.14);
+}
+
+.food-card-smares {
+  background-color: var(--color-surface);
 }
 
 /* Ảnh món ăn zoom mượt mà khi rê chuột */
 .card-zoom-img {
-  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
   will-change: transform;
 }
 
 .interactive-card:hover .card-zoom-img,
+.food-card-smares:hover .card-zoom-img,
 .group:hover .card-zoom-img {
   transform: scale(1.05);
 }
@@ -109,7 +134,7 @@ input:disabled,
   left: 50%;
   width: 0%;
   height: 2px;
-  background-color: #14532d; /* Heritage Jade */
+  background-color: var(--color-primary);
   border-radius: 9999px;
   transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1), left 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -124,8 +149,8 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
   outline: none;
-  border-color: #14532d !important;
-  box-shadow: 0 0 0 3px rgba(20, 83, 45, 0.15) !important;
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 3px rgba(21, 94, 66, 0.15) !important;
 }
 
 /* Animation keyframes */
@@ -149,7 +174,25 @@ textarea:focus-visible {
   to { opacity: 1; transform: scale(1); }
 }
 
+@keyframes cartPop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.12); }
+  75% { transform: scale(0.96); }
+  100% { transform: scale(1); }
+}
+
 .animate-fadeIn { animation: fadeIn 0.25s ease-out forwards; }
 .animate-slideUp { animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 .animate-slideDown { animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 .animate-scaleUp { animation: scaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-cart-pop { animation: cartPop 0.35s cubic-bezier(0.22, 1, 0.36, 1); }
+
+/* Ngăn cuộn trang nền khi native <dialog> mở ở top layer */
+dialog:modal {
+  overscroll-behavior: contain;
+}
+
+dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
