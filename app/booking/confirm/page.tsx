@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import BookingStepper from '@/components/BookingStepper';
 import DepositPaymentModal, {
   type DepositBookingSummary,
@@ -138,10 +139,13 @@ function readPendingReservation(expectedSlotKey: string): CreatedReservationSnap
 }
 
 export default function BookingConfirmPage() {
+  const router = useRouter();
   const {
     cart,
     totalPrice,
     bookingInfo,
+    clearCart,
+    clearBookingInfo,
     hasActiveBooking,
     isLoaded,
     hasSpecialItems,
@@ -149,6 +153,7 @@ export default function BookingConfirmPage() {
   const { showToast } = useToast();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [errorActionTarget, setErrorActionTarget] = useState<'diagram' | 'menu' | null>(null);
   const [depositSession, setDepositSession] = useState<ActiveDepositSession | null>(null);
@@ -456,7 +461,38 @@ export default function BookingConfirmPage() {
     [depositSession, releaseLockSafely, showToast]
   );
 
-  if (isLoaded && !hasActiveBooking && !depositSession) {
+  const handleBankQrComplete = useCallback(
+    (_transactionRef: string, amountPaid: number) => {
+      const current = depositSession;
+      setIsRedirecting(true);
+      setDepositSession(null);
+
+      try {
+        sessionStorage.removeItem(PENDING_RESERVATION_KEY);
+        sessionStorage.removeItem('smares_selected_table_id');
+      } catch {
+        // Bỏ qua lỗi sessionStorage
+      }
+
+      clearCart();
+      clearBookingInfo();
+      showToast(
+        `Đã ghi nhận yêu cầu đặt cọc ${formatMoney(amountPaid)}. Vui lòng lưu mã đặt bàn!`,
+        'success'
+      );
+
+      if (current) {
+        router.push(
+          `/booking/success?code=${encodeURIComponent(current.booking.bookingCode)}&table=${encodeURIComponent(current.booking.tableNumber)}`
+        );
+      } else {
+        router.push('/booking/success');
+      }
+    },
+    [depositSession, clearCart, clearBookingInfo, showToast, router]
+  );
+
+  if (isLoaded && !hasActiveBooking && !depositSession && !isRedirecting) {
     return (
       <main className="flex-1 bg-[#FAF8F5] text-[#1C1917] flex flex-col min-h-screen">
         <BookingStepper currentStep={4} />
@@ -792,6 +828,7 @@ export default function BookingConfirmPage() {
         preOrderItems={preOrderItemsPayload}
         lockSessionId={depositSession?.lockSessionId ?? ''}
         lockExpiresAt={depositSession?.lockExpiresAt ?? ''}
+        onBankQrComplete={handleBankQrComplete}
         onCancelAndRelease={handleCancelAndRelease}
       />
     </main>
