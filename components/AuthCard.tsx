@@ -49,7 +49,15 @@ export default function AuthCard({ initialMode = 'login' }: AuthCardProps) {
         body: JSON.stringify(loginData),
       });
 
-      let data: { token?: string; user?: unknown; message?: string } = {};
+      let data: {
+        user?: {
+          id?: string;
+          name?: string;
+          email?: string;
+          role?: string;
+        };
+        message?: string;
+      } = {};
       try {
         data = await response.json();
       } catch {
@@ -57,18 +65,31 @@ export default function AuthCard({ initialMode = 'login' }: AuthCardProps) {
       }
 
       if (response.ok) {
-        if (data.token) {
-          localStorage.setItem('token', data.token);
-        }
+        localStorage.removeItem('token');
         if (data.user) {
-          localStorage.setItem('user', JSON.stringify(data.user));
+          const safeUser = {
+            id: data.user.id ?? '',
+            name: data.user.name ?? '',
+            email: data.user.email ?? '',
+            role: data.user.role ?? '',
+          };
+          localStorage.setItem('user', JSON.stringify(safeUser));
         }
 
         // Bắn sự kiện để Navbar cập nhật ngay lập tức mà không cần F5
         window.dispatchEvent(new Event('auth-change'));
 
+        const redirectParam =
+          typeof window !== 'undefined'
+            ? new URLSearchParams(window.location.search).get('redirect')
+            : null;
+        const safeRedirect =
+          redirectParam && redirectParam.startsWith('/') && !redirectParam.startsWith('//')
+            ? redirectParam
+            : '/';
+
         alert("Đăng nhập thành công!");
-        router.push('/');
+        router.push(safeRedirect);
       } else {
         alert(`Lỗi: ${data.message || "Tài khoản hoặc mật khẩu không chính xác"}`);
       }
