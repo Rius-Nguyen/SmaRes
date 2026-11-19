@@ -2,9 +2,111 @@ const express = require('express');
 const router = express.Router();
 const Food = require('../models/Food');
 const { verifyToken, isAdmin } = require('../middleware/auth');
+const { getQueryEmbedding } = require('../utils/embedding'); // Thêm helper tạo vector
 
-// @route   POST /api/menu
-// @desc    Thêm món ăn mới vào thực đơn (Chỉ Admin)
+// ==========================================
+// 1. API: TÌM KIẾM NGỮ NGHĨA KẾT HỢP LỌC DANH MỤC & GIÁ (TK-155)
+// ==========================================
+// @route   GET /api/menu/search/semantic
+// @desc    Tìm kiếm món ăn bằng Vector Search kết hợp tiền lọc category và price
+router.get('/search/semantic', async (req, res) => {
+  try {
+    const { q, category, minPrice, maxPrice, limit = 10 } = req.query;
+
+    // 1. Xây dựng điều kiện tiền lọc (Pre-filter) cho MongoDB Atlas Vector Search
+    const filterConditions = [];
+
+    if (category && category !== 'all' && category.trim() !== '') {
+      filterConditions.push({ category: { $eq: category.trim() } });
+    }
+
+    if (minPrice !== undefined && minPrice !== '') {
+      filterConditions.push({ price: { $gte: Number(minPrice) } });
+    }
+
+    if (maxPrice !== undefined && maxPrice !== '') {
+      filterConditions.push({ price: { $lte: Number(maxPrice) } });
+    }
+
+    const vectorFilter =
+      filterConditions.length > 1
+        ? { $and: filterConditions }
+        : filterConditions.length === 1
+        ? filterConditions[0]
+        : undefined;
+
+    // 2. Nếu người dùng KHÔNG nhập từ khóa (q trống) -> Chỉ lọc thuần theo danh mục và giá
+    if (!q || q.trim() === '') {
+      const normalQuery = {};
+      if (category && category !== 'all' && category.trim() !== '') {
+        normalQuery.category = category.trim();
+      }
+      if (minPrice || maxPrice) {
+        normalQuery.price = {};
+        if (minPrice) normalQuery.price.$gte = Number(minPrice);
+        if (maxPrice) normalQuery.price.$lte = Number(maxPrice);
+      }
+
+      const foods = await Food.find(normalQuery).select('-embedding').limit(Number(limit));
+      return res.status(200).json({
+        success: true,
+        searchType: 'filter-only',
+        count: foods.length,
+        data: foods,
+      });
+    }
+
+    // 3. Chuyển đổi chuỗi tìm kiếm thành Vector thông qua Gemini API
+    const queryVector = await getQueryEmbedding(q.trim());
+
+    // 4. Thực thi truy vấn MongoDB Atlas Vector Search ($vectorSearch)
+    const vectorSearchStage = {
+      index: 'vector_index', // Tên Index đã cấu hình trên MongoDB Atlas
+      path: 'embedding',     // Trường chứa mảng vector trong Model Food
+      queryVector,
+      numCandidates: 100,
+      limit: Number(limit),
+    };
+
+    if (vectorFilter) {
+      vectorSearchStage.filter = vectorFilter;
+    }
+
+    const results = await Food.aggregate([
+      { $vectorSearch: vectorSearchStage },
+      {
+        $project: {
+          embedding: 0, // Ẩn mảng vector để tối ưu dung lượng trả về
+          score: { $meta: 'vectorSearchScore' }, // Trả kèm độ tương đồng ngữ nghĩa
+        },
+      },
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      searchType: 'semantic',
+      query: q.trim(),
+      filters: {
+        category: category || null,
+        minPrice: minPrice ? Number(minPrice) : null,
+        maxPrice: maxPrice ? Number(maxPrice) : null,
+      },
+      count: results.length,
+      data: results,
+    });
+  } catch (error) {
+    console.error('Lỗi GET /api/menu/search/semantic:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi server khi tìm kiếm món ăn theo ngữ nghĩa',
+      error: error.message,
+    });
+  }
+});
+
+// ==========================================
+// 2. API: THÊM MÓN ĂN MỚI (Admin)
+// ==========================================
 router.post('/', verifyToken, isAdmin, async (req, res) => {
   try {
     const { name, price, description, category, image, isAvailable } = req.body;
@@ -41,8 +143,9 @@ router.post('/', verifyToken, isAdmin, async (req, res) => {
   }
 });
 
-// @route   PUT /api/menu/:id
-// @desc    Sửa thông tin món ăn theo ID (Chỉ Admin)
+// ==========================================
+// 3. API: SỬA MÓN ĂN THEO ID (Admin)
+// ==========================================
 router.put('/:id', verifyToken, isAdmin, async (req, res) => {
   try {
     const foodId = req.params.id;
@@ -75,8 +178,9 @@ router.put('/:id', verifyToken, isAdmin, async (req, res) => {
   }
 });
 
-// @route   PATCH /api/menu/:id/toggle-availability
-// @desc    Nút công tắc 1 chạm Bật/Tắt 'Hết món nhanh' (TK-163)
+// ==========================================
+// 4. API: BẬT/TẮT TRẠNG THÁI HẾT MÓN NHANH
+// ==========================================
 router.patch('/:id/toggle-availability', async (req, res) => {
   try {
     const foodId = req.params.id;

@@ -1,6 +1,5 @@
 const mongoose = require('mongoose');
 
-// Định nghĩa Schema chi tiết cho Món ăn (Food)
 const FoodSchema = new mongoose.Schema(
   {
     name: {
@@ -24,17 +23,23 @@ const FoodSchema = new mongoose.Schema(
     },
     image: {
       type: String,
-      default: '' // Link hình ảnh món ăn nếu có
+      default: ''
     },
     isAvailable: {
       type: Boolean,
-      default: true // Trạng thái còn món hay hết món
+      default: true
+    },
+    embedding: {
+      type: [Number],
+      default: []
     }
   },
   {
-    timestamps: true // Tự động tạo trường createdAt và updatedAt
+    collection: 'menu_items',
+    timestamps: true
   }
 );
 
-// Xuất khẩu Model Food theo chuẩn CommonJS để khớp 100% với dự án
-module.exports = mongoose.model('Food', FoodSchema);
+module.exports =
+  (mongoose.models && mongoose.models.Food) ||
+  mongoose.model('Food', FoodSchema);
