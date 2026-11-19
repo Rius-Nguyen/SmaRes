@@ -22,6 +22,7 @@ export type { ItemCustomizations, CartItem };
 
 // Cấu trúc thông tin đặt bàn trong luồng workflow
 export interface BookingInfo {
+  reservationId?: string;
   name: string;
   phone: string;
   email?: string;
@@ -34,6 +35,9 @@ export interface BookingInfo {
   tableType?: string;
   tableCapacity?: string | number;
   bookingCode?: string;
+  qr_token?: string;
+  depositAmount?: number;
+  paymentStatus?: string;
 }
 
 // Kiểu dữ liệu cho Cart Context

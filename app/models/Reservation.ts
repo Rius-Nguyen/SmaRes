@@ -9,6 +9,17 @@ export const ReservationStatus = {
 
 export type ReservationStatus = (typeof ReservationStatus)[keyof typeof ReservationStatus];
 
+export const PaymentStatus = {
+  UNPAID: 'UNPAID',
+  PENDING: 'PENDING',
+  PAID: 'PAID',
+  FAILED: 'FAILED',
+  EXPIRED: 'EXPIRED',
+  REFUNDED: 'REFUNDED',
+} as const;
+
+export type PaymentStatus = (typeof PaymentStatus)[keyof typeof PaymentStatus];
+
 export interface IReservation {
   _id?: string;
   userId?: Types.ObjectId | string | null;
@@ -23,6 +34,9 @@ export interface IReservation {
   bookingCode: string;
   status: ReservationStatus;
   checkInTime?: Date | null;
+  depositAmount?: number;
+  paymentStatus?: PaymentStatus;
+  holdExpiresAt?: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -93,6 +107,22 @@ const ReservationSchema = new Schema<IReservation>(
     checkInTime: {
       type: Date,
       default: null,
+    },
+    depositAmount: {
+      type: Number,
+      default: 0,
+      min: [0, 'Tiền cọc không được nhỏ hơn 0'],
+    },
+    paymentStatus: {
+      type: String,
+      enum: Object.values(PaymentStatus),
+      default: PaymentStatus.UNPAID,
+      index: true,
+    },
+    holdExpiresAt: {
+      type: Date,
+      default: null,
+      index: true,
     },
   },
   {
