@@ -3,6 +3,10 @@ import mongoose from 'mongoose';
 import connectDB from '@/app/lib/db';
 import WaiterCall, { WaiterCallStatus } from '@/app/models/WaiterCall';
 import { requireRole } from '@/app/lib/auth';
+import {
+  emitRealtimeEvent,
+  REALTIME_EVENT_TYPES,
+} from '@/app/lib/realtimeBus';
 
 const VALID_WAITER_CALL_STATUSES: readonly string[] = Object.values(WaiterCallStatus);
 
@@ -86,6 +90,18 @@ export async function POST(request: NextRequest) {
       status: WaiterCallStatus.PENDING,
     });
 
+    try {
+      emitRealtimeEvent({
+        type: REALTIME_EVENT_TYPES.WAITER_CALL_CREATED,
+        callId: String(newCall._id),
+        tableNumber: newCall.tableNumber,
+        reason: newCall.reason,
+        status: newCall.status,
+      });
+    } catch (sseError: unknown) {
+      console.error('Lỗi phát sự kiện SSE WAITER_CALL_CREATED:', sseError);
+    }
+
     return NextResponse.json(
       {
         success: true,
@@ -162,6 +178,18 @@ export async function PATCH(request: NextRequest) {
         { success: false, message: 'Không tìm thấy yêu cầu' },
         { status: 404 }
       );
+    }
+
+    try {
+      emitRealtimeEvent({
+        type: REALTIME_EVENT_TYPES.WAITER_CALL_UPDATED,
+        callId: String(updatedCall._id),
+        tableNumber: updatedCall.tableNumber,
+        reason: updatedCall.reason,
+        status: updatedCall.status,
+      });
+    } catch (sseError: unknown) {
+      console.error('Lỗi phát sự kiện SSE WAITER_CALL_UPDATED:', sseError);
     }
 
     return NextResponse.json(

@@ -12,6 +12,10 @@ import Order, {
 import MenuItem from '@/app/models/MenuItem';
 import Table from '@/app/models/Table';
 import { getAuthUser, requireAuth, requireRole } from '@/app/lib/auth';
+import {
+  emitRealtimeEvent,
+  REALTIME_EVENT_TYPES,
+} from '@/app/lib/realtimeBus';
 
 const VALID_ORDER_STATUSES: readonly string[] = Object.values(OrderStatus);
 const VALID_SPICY_LEVELS: readonly string[] = Object.values(SpicyLevel);
@@ -261,6 +265,19 @@ export async function POST(request: NextRequest) {
       notes,
     });
 
+    try {
+      emitRealtimeEvent({
+        type: REALTIME_EVENT_TYPES.ORDER_CREATED,
+        orderId: String(created._id),
+        orderCode: created.orderCode,
+        tableNumber: created.tableNumber || undefined,
+        status: created.status,
+        totalAmount: created.totalAmount,
+      });
+    } catch (sseError: unknown) {
+      console.error('Lỗi phát sự kiện SSE ORDER_CREATED:', sseError);
+    }
+
     return NextResponse.json(
       {
         success: true,
@@ -344,6 +361,18 @@ export async function PATCH(request: NextRequest) {
 
     order.status = rawStatus;
     await order.save();
+
+    try {
+      emitRealtimeEvent({
+        type: REALTIME_EVENT_TYPES.ORDER_STATUS_UPDATED,
+        orderId: String(order._id),
+        orderCode: order.orderCode,
+        tableNumber: order.tableNumber || undefined,
+        status: order.status,
+      });
+    } catch (sseError: unknown) {
+      console.error('Lỗi phát sự kiện SSE ORDER_STATUS_UPDATED:', sseError);
+    }
 
     return NextResponse.json(
       {

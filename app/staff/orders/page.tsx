@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { useToast } from '@/components/ui/Toast';
 import {
   KdsOrderStatus,
   OrderItemCustomization,
@@ -14,6 +15,35 @@ type OrderFilter = 'ALL' | KdsOrderStatus;
 type WaiterCallStatus = 'PENDING' | 'ATTENDED' | 'COMPLETED';
 type WaiterFilter = 'ALL' | WaiterCallStatus;
 type AuthState = 'ok' | 'unauthorized' | 'forbidden';
+type SseConnectionState = 'connecting' | 'live' | 'reconnecting';
+
+interface SseRealtimePayload {
+  orderId?: string;
+  orderCode?: string;
+  tableNumber?: string;
+  callId?: string;
+  reason?: string;
+  status?: string;
+}
+
+function parseSsePayload(rawData: string): SseRealtimePayload | null {
+  try {
+    const parsed: unknown = JSON.parse(rawData);
+    if (typeof parsed !== 'object' || parsed === null) {
+      return null;
+    }
+    return parsed as SseRealtimePayload;
+  } catch {
+    return null;
+  }
+}
+
+function extractSseEventData(event: Event): string {
+  if ('data' in event && typeof (event as { data?: unknown }).data === 'string') {
+    return (event as { data: string }).data;
+  }
+  return '';
+}
 
 interface StaffOrderItem {
   _id?: string;
@@ -193,6 +223,7 @@ function resolveOrderItemName(item: StaffOrderItem): string {
 }
 
 export default function StaffOrdersPage() {
+  const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<StaffTab>('orders');
   const [orders, setOrders] = useState<StaffOrder[]>([]);
   const [waiterCalls, setWaiterCalls] = useState<WaiterCallRecord[]>([]);
@@ -200,105 +231,322 @@ export default function StaffOrdersPage() {
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [authState, setAuthState] = useState<AuthState>('ok');
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [sseState, setSseState] = useState<SseConnectionState>('connecting');
+  const [sseReconnectNonce, setSseReconnectNonce] = useState<number>(0);
   const [orderFilter, setOrderFilter] = useState<OrderFilter>('ALL');
   const [waiterFilter, setWaiterFilter] = useState<WaiterFilter>('ALL');
   const [updatingOrderIds, setUpdatingOrderIds] = useState<string[]>([]);
   const [updatingCallIds, setUpdatingCallIds] = useState<string[]>([]);
   const [reloadNonce, setReloadNonce] = useState<number>(0);
 
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = useRef<boolean>(true);
+  const hasConnectedSseOnceRef = useRef<boolean>(false);
+  const sseSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inFlightOrderIdsRef = useRef<Map<string, number>>(new Map());
+  const lastOrderMutationAtRef = useRef<Record<string, number>>({});
+  const inFlightCallIdsRef = useRef<Map<string, number>>(new Map());
+  const lastCallMutationAtRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
-      if (toastTimerRef.current) {
-        clearTimeout(toastTimerRef.current);
-      }
+      isMountedRef.current = false;
     };
   }, []);
 
-  const showToast = useCallback((message: string) => {
-    setToastMessage(message);
-    if (toastTimerRef.current) {
-      clearTimeout(toastTimerRef.current);
+  const mergeSyncedOrders = useCallback(
+    (prevOrders: StaffOrder[], serverOrders: StaffOrder[], fetchStartedAt: number): StaffOrder[] => {
+      const prevById = new Map<string, StaffOrder>(prevOrders.map((o) => [o._id, o]));
+      return serverOrders.map((serverOrder) => {
+        const isInFlight = (inFlightOrderIdsRef.current.get(serverOrder._id) ?? 0) > 0;
+        const lastMutatedAt = lastOrderMutationAtRef.current[serverOrder._id] ?? 0;
+        if (isInFlight || fetchStartedAt < lastMutatedAt) {
+          return prevById.get(serverOrder._id) ?? serverOrder;
+        }
+        return serverOrder;
+      });
+    },
+    []
+  );
+
+  const mergeSyncedCalls = useCallback(
+    (
+      prevCalls: WaiterCallRecord[],
+      serverCalls: WaiterCallRecord[],
+      fetchStartedAt: number
+    ): WaiterCallRecord[] => {
+      const prevById = new Map<string, WaiterCallRecord>(prevCalls.map((c) => [c._id, c]));
+      return serverCalls.map((serverCall) => {
+        const isInFlight = (inFlightCallIdsRef.current.get(serverCall._id) ?? 0) > 0;
+        const lastMutatedAt = lastCallMutationAtRef.current[serverCall._id] ?? 0;
+        if (isInFlight || fetchStartedAt < lastMutatedAt) {
+          return prevById.get(serverCall._id) ?? serverCall;
+        }
+        return serverCall;
+      });
+    },
+    []
+  );
+
+  type StaffFetchResult =
+    | {
+        kind: 'ok';
+        orders?: StaffOrder[];
+        calls?: WaiterCallRecord[];
+        errorMessage: string;
+        fetchStartedAt: number;
+      }
+    | {
+        kind: 'auth';
+        authState: 'unauthorized' | 'forbidden';
+        message: string;
+      }
+    | {
+        kind: 'error';
+        message: string;
+      };
+
+  const beginMutationTrack = useCallback(
+    (
+      inFlightRef: React.MutableRefObject<Map<string, number>>,
+      lastAtRef: React.MutableRefObject<Record<string, number>>,
+      setUpdatingIds: React.Dispatch<React.SetStateAction<string[]>>,
+      id: string
+    ) => {
+      inFlightRef.current.set(id, (inFlightRef.current.get(id) ?? 0) + 1);
+      lastAtRef.current[id] = Date.now();
+      setUpdatingIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    },
+    []
+  );
+
+  const endMutationTrack = useCallback(
+    (
+      inFlightRef: React.MutableRefObject<Map<string, number>>,
+      lastAtRef: React.MutableRefObject<Record<string, number>>,
+      setUpdatingIds: React.Dispatch<React.SetStateAction<string[]>>,
+      id: string
+    ) => {
+      const remaining = inFlightRef.current.get(id) ?? 0;
+      if (remaining <= 1) {
+        inFlightRef.current.delete(id);
+        setUpdatingIds((prev) => prev.filter((item) => item !== id));
+      } else {
+        inFlightRef.current.set(id, remaining - 1);
+      }
+      lastAtRef.current[id] = Date.now();
+    },
+    []
+  );
+
+  const fetchStaffSnapshot = useCallback(async (): Promise<StaffFetchResult> => {
+    const fetchStartedAt = Date.now();
+    try {
+      const [ordersRes, waiterRes] = await Promise.all([
+        fetch('/api/orders', { method: 'GET', cache: 'no-store' }),
+        fetch('/api/waiter', { method: 'GET', cache: 'no-store' }),
+      ]);
+
+      if (ordersRes.status === 401 || waiterRes.status === 401) {
+        return {
+          kind: 'auth',
+          authState: 'unauthorized',
+          message: 'Vui lòng đăng nhập tài khoản Nhân viên / Quản lý để truy cập bảng điều phối.',
+        };
+      }
+
+      if (ordersRes.status === 403 || waiterRes.status === 403) {
+        return {
+          kind: 'auth',
+          authState: 'forbidden',
+          message: 'Tài khoản hiện tại không có quyền Nhân viên để xem dữ liệu điều phối.',
+        };
+      }
+
+      const [ordersJson, waiterJson] = (await Promise.all([
+        ordersRes.json().catch(() => ({ success: false })),
+        waiterRes.json().catch(() => ({ success: false })),
+      ])) as [OrdersApiResponse, WaiterApiResponse];
+
+      const errorMessages: string[] = [];
+      let nextOrders: StaffOrder[] | undefined;
+      let nextCalls: WaiterCallRecord[] | undefined;
+
+      if (ordersRes.ok && ordersJson.success && Array.isArray(ordersJson.orders)) {
+        nextOrders = ordersJson.orders.map(normalizeStaffOrder);
+      } else {
+        errorMessages.push(ordersJson.message || ordersJson.error || 'Không thể tải đơn hàng.');
+      }
+
+      if (waiterRes.ok && waiterJson.success && Array.isArray(waiterJson.calls)) {
+        nextCalls = waiterJson.calls.map(normalizeWaiterCall);
+      } else {
+        errorMessages.push(
+          waiterJson.message || waiterJson.error || 'Không thể tải yêu cầu gọi phục vụ.'
+        );
+      }
+
+      return {
+        kind: 'ok',
+        orders: nextOrders,
+        calls: nextCalls,
+        errorMessage: errorMessages.join(' '),
+        fetchStartedAt,
+      };
+    } catch {
+      return {
+        kind: 'error',
+        message: 'Lỗi kết nối đến máy chủ lấy dữ liệu điều phối!',
+      };
     }
-    toastTimerRef.current = setTimeout(() => {
-      setToastMessage(null);
-    }, 3500);
   }, []);
+
+  const applyStaffSnapshot = useCallback(
+    (snapshot: StaffFetchResult) => {
+      if (snapshot.kind === 'auth') {
+        setAuthState(snapshot.authState);
+        setError(snapshot.message);
+      } else if (snapshot.kind === 'error') {
+        setError(snapshot.message);
+      } else {
+        setAuthState('ok');
+        if (snapshot.orders) {
+          const syncedOrders = snapshot.orders;
+          setOrders((prev) => mergeSyncedOrders(prev, syncedOrders, snapshot.fetchStartedAt));
+        }
+        if (snapshot.calls) {
+          const syncedCalls = snapshot.calls;
+          setWaiterCalls((prev) => mergeSyncedCalls(prev, syncedCalls, snapshot.fetchStartedAt));
+        }
+        setError(snapshot.errorMessage);
+      }
+      setLoading(false);
+      setIsRefreshing(false);
+    },
+    [mergeSyncedOrders, mergeSyncedCalls]
+  );
+
+  const loadStaffData = useCallback(async () => {
+    const snapshot = await fetchStaffSnapshot();
+    if (!isMountedRef.current) return;
+    applyStaffSnapshot(snapshot);
+  }, [fetchStaffSnapshot, applyStaffSnapshot]);
 
   useEffect(() => {
     let cancelled = false;
+    void fetchStaffSnapshot().then((snapshot) => {
+      if (!cancelled) {
+        applyStaffSnapshot(snapshot);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchStaffSnapshot, applyStaffSnapshot, reloadNonce]);
 
-    const loadStaffData = async () => {
-      try {
-        const [ordersRes, waiterRes] = await Promise.all([
-          fetch('/api/orders', { method: 'GET', cache: 'no-store' }),
-          fetch('/api/waiter', { method: 'GET', cache: 'no-store' }),
-        ]);
+  // Kết nối SSE thời gian thực (/api/realtime/events) cho Đơn hàng & Gọi phục vụ
+  useEffect(() => {
+    if (authState !== 'ok') {
+      return;
+    }
 
-        if (cancelled) return;
+    const eventSource = new EventSource('/api/realtime/events');
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
-        if (ordersRes.status === 401 || waiterRes.status === 401) {
-          setAuthState('unauthorized');
-          setError('Vui lòng đăng nhập tài khoản Nhân viên / Quản lý để truy cập bảng điều phối.');
-          return;
-        }
+    const scheduleRealtimeSync = () => {
+      if (sseSyncTimerRef.current !== null) {
+        clearTimeout(sseSyncTimerRef.current);
+      }
+      sseSyncTimerRef.current = setTimeout(() => {
+        sseSyncTimerRef.current = null;
+        void loadStaffData();
+      }, 150);
+    };
 
-        if (ordersRes.status === 403 || waiterRes.status === 403) {
-          setAuthState('forbidden');
-          setError('Tài khoản hiện tại không có quyền Nhân viên để xem dữ liệu điều phối.');
-          return;
-        }
-
-        const [ordersJson, waiterJson] = (await Promise.all([
-          ordersRes.json().catch(() => ({ success: false })),
-          waiterRes.json().catch(() => ({ success: false })),
-        ])) as [OrdersApiResponse, WaiterApiResponse];
-
-        if (cancelled) return;
-
-        setAuthState('ok');
-
-        const errorMessages: string[] = [];
-        if (ordersRes.ok && ordersJson.success && Array.isArray(ordersJson.orders)) {
-          setOrders(ordersJson.orders.map(normalizeStaffOrder));
-        } else {
-          errorMessages.push(ordersJson.message || ordersJson.error || 'Không thể tải đơn hàng.');
-        }
-
-        if (waiterRes.ok && waiterJson.success && Array.isArray(waiterJson.calls)) {
-          setWaiterCalls(waiterJson.calls.map(normalizeWaiterCall));
-        } else {
-          errorMessages.push(
-            waiterJson.message || waiterJson.error || 'Không thể tải yêu cầu gọi phục vụ.'
-          );
-        }
-
-        setError(errorMessages.join(' '));
-      } catch {
-        if (!cancelled) {
-          setError('Lỗi kết nối đến máy chủ lấy dữ liệu điều phối!');
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-          setIsRefreshing(false);
-        }
+    const handleOpen = () => {
+      setSseState('live');
+      if (hasConnectedSseOnceRef.current) {
+        void loadStaffData();
+      } else {
+        hasConnectedSseOnceRef.current = true;
       }
     };
 
-    void loadStaffData();
+    const handleError = () => {
+      setSseState('reconnecting');
+      if (eventSource.readyState === EventSource.CLOSED && reconnectTimer === null) {
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null;
+          setSseReconnectNonce((prev) => prev + 1);
+        }, 5000);
+      }
+    };
 
-    const interval = setInterval(() => {
-      void loadStaffData();
-    }, 15000);
+    const handleOrderCreated = (event: Event) => {
+      const payload = parseSsePayload(extractSseEventData(event));
+      const code =
+        payload?.orderCode ||
+        (payload?.orderId ? `#${payload.orderId.slice(-6).toUpperCase()}` : 'mới');
+      const tableText = payload?.tableNumber ? `Bàn ${payload.tableNumber}` : 'Mang về';
+      showToast(`Đơn hàng mới ${code} (${tableText}) vừa được tạo!`, 'info');
+      scheduleRealtimeSync();
+    };
+
+    const handleOrderStatusUpdated = () => {
+      scheduleRealtimeSync();
+    };
+
+    const handleWaiterCallCreated = (event: Event) => {
+      const payload = parseSsePayload(extractSseEventData(event));
+      const tableText = payload?.tableNumber ? `Bàn ${payload.tableNumber}` : 'Khách tại bàn';
+      const reasonText = payload?.reason || 'Cần hỗ trợ';
+      showToast(`${tableText} gọi phục vụ: ${reasonText}`, 'warning');
+      scheduleRealtimeSync();
+    };
+
+    const handleWaiterCallUpdated = () => {
+      scheduleRealtimeSync();
+    };
+
+    eventSource.addEventListener('open', handleOpen);
+    eventSource.addEventListener('error', handleError);
+    eventSource.addEventListener('ORDER_CREATED', handleOrderCreated);
+    eventSource.addEventListener('ORDER_STATUS_UPDATED', handleOrderStatusUpdated);
+    eventSource.addEventListener('WAITER_CALL_CREATED', handleWaiterCallCreated);
+    eventSource.addEventListener('WAITER_CALL_UPDATED', handleWaiterCallUpdated);
 
     return () => {
-      cancelled = true;
-      clearInterval(interval);
+      eventSource.removeEventListener('open', handleOpen);
+      eventSource.removeEventListener('error', handleError);
+      eventSource.removeEventListener('ORDER_CREATED', handleOrderCreated);
+      eventSource.removeEventListener('ORDER_STATUS_UPDATED', handleOrderStatusUpdated);
+      eventSource.removeEventListener('WAITER_CALL_CREATED', handleWaiterCallCreated);
+      eventSource.removeEventListener('WAITER_CALL_UPDATED', handleWaiterCallUpdated);
+      eventSource.close();
+      if (reconnectTimer !== null) {
+        clearTimeout(reconnectTimer);
+      }
+      if (sseSyncTimerRef.current !== null) {
+        clearTimeout(sseSyncTimerRef.current);
+        sseSyncTimerRef.current = null;
+      }
     };
-  }, [reloadNonce]);
+  }, [authState, sseReconnectNonce, loadStaffData, showToast]);
+
+  // Đồng bộ an toàn mỗi 60s khi SSE mất kết nối
+  useEffect(() => {
+    if (authState !== 'ok' || sseState === 'live') {
+      return;
+    }
+
+    const fallbackInterval = setInterval(() => {
+      void loadStaffData();
+    }, 60000);
+
+    return () => {
+      clearInterval(fallbackInterval);
+    };
+  }, [authState, sseState, loadStaffData]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -306,12 +554,12 @@ export default function StaffOrdersPage() {
     setReloadNonce((prev) => prev + 1);
   };
 
-  const handleUpdateOrderStatus = async (orderId: string, nextStatus: KdsOrderStatus) => {
+  const handleUpdateOrderStatus = useCallback(async (orderId: string, nextStatus: KdsOrderStatus) => {
     const existing = orders.find((o) => o._id === orderId);
     const previousStatus = existing?.status ?? 'PENDING';
     const displayCode = existing?.orderCode || `#${orderId.slice(-6).toUpperCase()}`;
 
-    setUpdatingOrderIds((prev) => (prev.includes(orderId) ? prev : [...prev, orderId]));
+    beginMutationTrack(inFlightOrderIdsRef, lastOrderMutationAtRef, setUpdatingOrderIds, orderId);
     setError('');
     setOrders((prev) =>
       prev.map((o) => (o._id === orderId ? { ...o, status: nextStatus } : o))
@@ -343,7 +591,8 @@ export default function StaffOrdersPage() {
       }
 
       showToast(
-        `Đơn ${displayCode} đã chuyển sang ${ORDER_STATUS_META[nextStatus].code} (${ORDER_STATUS_META[nextStatus].label}).`
+        `Đơn ${displayCode} đã chuyển sang ${ORDER_STATUS_META[nextStatus].code} (${ORDER_STATUS_META[nextStatus].label}).`,
+        'success'
       );
     } catch (err: unknown) {
       setOrders((prev) =>
@@ -355,18 +604,18 @@ export default function StaffOrdersPage() {
           : 'Lỗi kết nối máy chủ khi cập nhật trạng thái đơn hàng.'
       );
     } finally {
-      setUpdatingOrderIds((prev) => prev.filter((id) => id !== orderId));
+      endMutationTrack(inFlightOrderIdsRef, lastOrderMutationAtRef, setUpdatingOrderIds, orderId);
     }
-  };
+  }, [orders, beginMutationTrack, endMutationTrack, showToast]);
 
-  const handleUpdateWaiterCallStatus = async (
+  const handleUpdateWaiterCallStatus = useCallback(async (
     callId: string,
     nextStatus: WaiterCallStatus
   ) => {
     const existing = waiterCalls.find((c) => c._id === callId);
     const previousStatus = existing?.status ?? 'PENDING';
 
-    setUpdatingCallIds((prev) => (prev.includes(callId) ? prev : [...prev, callId]));
+    beginMutationTrack(inFlightCallIdsRef, lastCallMutationAtRef, setUpdatingCallIds, callId);
     setError('');
     setWaiterCalls((prev) =>
       prev.map((c) => (c._id === callId ? { ...c, status: nextStatus } : c))
@@ -398,7 +647,8 @@ export default function StaffOrdersPage() {
       }
 
       showToast(
-        `Yêu cầu Bàn ${existing?.tableNumber ?? ''} đã chuyển sang ${WAITER_STATUS_META[nextStatus].code}.`
+        `Yêu cầu Bàn ${existing?.tableNumber ?? ''} đã chuyển sang ${WAITER_STATUS_META[nextStatus].code}.`,
+        'success'
       );
     } catch (err: unknown) {
       setWaiterCalls((prev) =>
@@ -410,9 +660,9 @@ export default function StaffOrdersPage() {
           : 'Lỗi kết nối máy chủ khi cập nhật yêu cầu gọi phục vụ.'
       );
     } finally {
-      setUpdatingCallIds((prev) => prev.filter((id) => id !== callId));
+      endMutationTrack(inFlightCallIdsRef, lastCallMutationAtRef, setUpdatingCallIds, callId);
     }
-  };
+  }, [waiterCalls, beginMutationTrack, endMutationTrack, showToast]);
 
   const sortedAndFilteredOrders = useMemo(() => {
     const filtered =
@@ -516,30 +766,25 @@ export default function StaffOrdersPage() {
 
   return (
     <main className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto min-h-screen bg-[#faf8f5] text-[#1c1917]">
-      {/* Toast thông báo */}
-      {toastMessage && (
-        <div className="fixed top-5 inset-x-4 max-w-md mx-auto z-50 animate-slideDown">
-          <div className="bg-[#14532d] text-white text-xs font-semibold px-4 py-3 rounded-2xl shadow-xl border border-emerald-500/60 flex items-center gap-2.5">
-            <svg
-              className="w-4 h-4 text-[#fbbf24] shrink-0"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-            >
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-            <span className="flex-1">{toastMessage}</span>
-          </div>
-        </div>
-      )}
-
       {/* Tiêu đề trang & Nút tải lại */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
         <div>
-          <span className="text-xs font-bold uppercase tracking-wider text-[#15803d] bg-[#f0fdf4] px-3.5 py-1 rounded-full border border-[#bbf7d0] inline-block mb-1.5">
-            Phục vụ &amp; Điều phối
-          </span>
+          <div className="flex flex-wrap items-center gap-2 mb-1.5">
+            <span className="text-xs font-bold uppercase tracking-wider text-[#15803d] bg-[#f0fdf4] px-3.5 py-1 rounded-full border border-[#bbf7d0] inline-block">
+              Phục vụ &amp; Điều phối
+            </span>
+            {sseState === 'live' ? (
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full bg-[#f0fdf4] text-[#15803d] border border-[#bbf7d0]">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Live
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full bg-[#fffbeb] text-[#92400e] border border-[#fde68a]">
+                <span className="w-2 h-2 rounded-full bg-[#d97706] animate-pulse" />
+                Đang kết nối lại
+              </span>
+            )}
+          </div>
           <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#14532d]">
             Quản Lý Đơn Hàng &amp; Hỗ Trợ Bàn (Staff)
           </h1>
