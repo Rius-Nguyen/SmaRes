@@ -1,10 +1,12 @@
+import type { MenuCategory } from '@/app/models/MenuItem';
+
 export interface MenuItemData {
   _id: string;
   name: string;
   price: number;
   description: string;
   imageUrl: string;
-  category: 'Khai vị' | 'Món chính' | 'Đồ uống' | 'Tráng miệng';
+  category: MenuCategory;
   isAvailable: boolean;
   isPreOrderOnly?: boolean;
   preparationNote?: string;
