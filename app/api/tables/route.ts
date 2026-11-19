@@ -131,9 +131,9 @@ export async function GET(request: NextRequest) {
 
       return {
         _id: String(table._id),
-        tableNumber: table.tableNumber,
+        tableNumber: table.tableNumber || '',
         capacity: table.capacity,
-        zoneName: table.zoneName,
+        zoneName: table.zoneName || 'Khu vực chính',
         status: normalizedStatus,
         qrToken: table.qrToken ?? null,
         activeReservation,
@@ -360,9 +360,9 @@ export async function PATCH(request: NextRequest) {
         data: {
           table: {
             _id: String(table._id),
-            tableNumber: table.tableNumber,
+            tableNumber: table.tableNumber || '',
             capacity: table.capacity,
-            zoneName: table.zoneName,
+            zoneName: table.zoneName || 'Khu vực chính',
             status: nextStatus,
             qrToken: table.qrToken ?? null,
             activeReservation,

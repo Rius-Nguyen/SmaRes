@@ -53,8 +53,8 @@ function normalizeGuests(value: string | number | undefined, fallback = 2): numb
 }
 
 function resolveZoneMeta(table: AvailabilityTable): ZoneMeta {
-  const zoneLower = table.zoneName.toLowerCase();
-  const numUpper = table.tableNumber.toUpperCase();
+  const zoneLower = (table.zoneName ?? '').toLowerCase();
+  const numUpper = (table.tableNumber ?? '').toUpperCase();
 
   if (zoneLower.includes('vip') || numUpper.startsWith('V')) {
     return {
@@ -165,7 +165,15 @@ export default function BookingDiagramPage() {
           return;
         }
 
-        const fetchedTables = data.tables;
+        const fetchedTables: AvailabilityTable[] = data.tables.map((table) => ({
+          ...table,
+          tableNumber: table.tableNumber ?? '',
+          zoneName: table.zoneName || 'Khu vực chính',
+          capacity:
+            typeof table.capacity === 'number' && Number.isFinite(table.capacity)
+              ? table.capacity
+              : 4,
+        }));
         setTables(fetchedTables);
         setFetchError('');
         setSelectedTableId(pickDefaultTableId(fetchedTables));

@@ -376,8 +376,8 @@ export default function StaffTablesPage() {
 
       const walkInName = walkInNamesByTable[table._id] ?? '';
       return (
-        table.tableNumber.toLowerCase().includes(q) ||
-        table.zoneName.toLowerCase().includes(q) ||
+        (table.tableNumber ?? '').toLowerCase().includes(q) ||
+        (table.zoneName ?? '').toLowerCase().includes(q) ||
         (table.activeReservation?.customerName ?? '').toLowerCase().includes(q) ||
         (table.activeReservation?.bookingCode ?? '').toLowerCase().includes(q) ||
         walkInName.toLowerCase().includes(q)

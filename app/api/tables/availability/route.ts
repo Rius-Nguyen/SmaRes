@@ -44,9 +44,9 @@ export async function GET(request: NextRequest) {
 
     const availabilityList = tables.map((table) => ({
       id: String(table._id),
-      tableNumber: table.tableNumber,
+      tableNumber: table.tableNumber || '',
       capacity: table.capacity,
-      zoneName: table.zoneName,
+      zoneName: table.zoneName || 'Khu vực chính',
       status: table.status,
       isAvailable: !bookedTableIds.has(String(table._id)),
     }));
