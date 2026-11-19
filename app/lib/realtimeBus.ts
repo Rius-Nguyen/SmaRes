@@ -71,3 +71,25 @@ export function subscribeRealtimeEvents(
     bus.off(REALTIME_BUS_CHANNEL, listener);
   };
 }
+export interface RealtimeAddonItemSummary {
+  menuItemId: string;
+  name: string;
+  quantity: number;
+  price: number;
+}
+
+export interface RealtimeOrderEvent {
+  type:
+    | typeof REALTIME_EVENT_TYPES.ORDER_CREATED
+    | typeof REALTIME_EVENT_TYPES.ORDER_STATUS_UPDATED;
+  orderId: string;
+  orderCode?: string;
+  tableNumber?: string;
+  status: string;
+  totalAmount?: number;
+  isAddon?: boolean;
+  mergedCount?: number;
+  addedNewLines?: number;
+  addedItems?: RealtimeAddonItemSummary[];
+  timestamp: string;
+}
