@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-// Lưu trữ danh sách phiên QR động theo từng bàn trong bộ nhớ tạm (TK-141)
+// Lưu trữ danh sách phiên QR động theo từng bàn trong bộ nhớ tạm (TK-141 & TK-150)
 let activeTableSessions = {};
 
 // Hàm tạo chuỗi Token định danh động gắn liền với Table ID
@@ -10,23 +10,45 @@ function createDynamicToken(tableId) {
   return `SMARES-${tableId}-${timeCode}-${randomStr}`;
 }
 
-// 1. Phương thức GET: Tạo và lấy mã QR động theo tableId (Ví dụ: /api/qr?tableId=B05)
+// 1. Phương thức GET: Tạo mã QR động và kiểm tra trạng thái bàn (Available, Occupied, Cleaning)
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const tableId = (searchParams.get('tableId') || 'B05').toUpperCase();
+    const tableStatus = (searchParams.get('status') || 'Occupied');
 
-    // Tạo Token mới gắn liền với Table ID
+    // Kịch bản 1 (TK-150): Bàn đang dọn dẹp (Cleaning) -> Chặn gọi món (Mã 403)
+    if (tableStatus.toLowerCase() === 'cleaning') {
+      return NextResponse.json({
+        success: false,
+        tableId: tableId,
+        tableStatus: 'Cleaning',
+        canOrder: false,
+        message: `Bàn ${tableId} hiện đang trong trạng thái dọn dẹp (Cleaning). Vui lòng chờ nhân viên hoàn tất trước khi quét QR gọi món!`
+      }, { status: 403 });
+    }
+
+    // Kịch bản 2 (TK-150): Bàn trống chưa kích hoạt phiên (Available) -> Yêu cầu nhận bàn trước
+    if (tableStatus.toLowerCase() === 'available') {
+      return NextResponse.json({
+        success: true,
+        tableId: tableId,
+        tableStatus: 'Available',
+        canOrder: false,
+        redirectUrl: `http://localhost:3000/booking?tableId=${tableId}`,
+        message: `Bàn ${tableId} đang trống (Available). Vui lòng kích hoạt nhận bàn trước khi gọi món.`
+      }, { status: 200 });
+    }
+
+    // Kịch bản 3 (TK-141 & TK-150): Bàn đang có khách (Occupied) -> Tạo Token & QR động cho phép gọi món
     const token = createDynamicToken(tableId);
-
-    // Đường dẫn gọi món tại bàn có đính kèm Table ID và Token xác thực
-    const orderUrl = `http://localhost:3000/menu?tableId=${tableId}&token=${token}`;
-
-    // Tạo link ảnh QR động trực tiếp từ chuỗi orderUrl
+    const orderUrl = `http://localhost:3000/menu?tableId=${tableId}&status=Occupied&token=${token}`;
     const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(orderUrl)}`;
 
     const sessionData = {
       tableId: tableId,
+      tableStatus: 'Occupied',
+      canOrder: true,
       token: token,
       orderUrl: orderUrl,
       qrImageUrl: qrImageUrl,
@@ -34,12 +56,11 @@ export async function GET(request) {
       createdAt: new Date().toISOString()
     };
 
-    // Lưu phiên QR của bàn vào bộ nhớ
     activeTableSessions[tableId] = sessionData;
 
     return NextResponse.json({
       success: true,
-      message: 'Khởi tạo mã QR động định danh bàn ăn thành công',
+      message: `Quét mã QR Bàn ${tableId} (Occupied) hợp lệ. Cho phép gọi thêm món.`,
       data: sessionData
     }, { status: 200 });
 
@@ -52,17 +73,20 @@ export async function GET(request) {
   }
 }
 
-// 2. Phương thức POST: Cấp mới lại mã QR động cho bàn khi đón lượt khách mới
+// 2. Phương thức POST: Cấp mới lại mã QR động và cập nhật trạng thái bàn
 export async function POST(request) {
   try {
     const body = await request.json();
     const tableId = (body.tableId || 'B05').toUpperCase();
+    const tableStatus = body.tableStatus || 'Occupied';
     const token = createDynamicToken(tableId);
-    const orderUrl = `http://localhost:3000/menu?tableId=${tableId}&token=${token}`;
+    const orderUrl = `http://localhost:3000/menu?tableId=${tableId}&status=${tableStatus}&token=${token}`;
     const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(orderUrl)}`;
 
     const sessionData = {
       tableId: tableId,
+      tableStatus: tableStatus,
+      canOrder: tableStatus.toLowerCase() === 'occupied',
       token: token,
       orderUrl: orderUrl,
       qrImageUrl: qrImageUrl,
@@ -74,7 +98,7 @@ export async function POST(request) {
 
     return NextResponse.json({
       success: true,
-      message: 'Làm mới Token và mã QR động thành công',
+      message: 'Làm mới Token và trạng thái mã QR động thành công',
       data: sessionData
     }, { status: 201 });
   } catch (error) {
