@@ -1,5 +1,6 @@
 export {
   default,
+  type DepositPaymentMethod,
   type SandboxPaymentProvider,
   type DepositBookingSummary,
   type DepositPreOrderItem,
