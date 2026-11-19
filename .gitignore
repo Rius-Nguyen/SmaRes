@@ -48,3 +48,6 @@ next-env.d.ts
 
 # Nested folder
 SmaRes/
+
+# Local markdown files
+*.md
