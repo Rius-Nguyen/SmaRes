@@ -1,0 +1,106 @@
+import { NextRequest, NextResponse } from 'next/server';
+import mongoose from 'mongoose';
+import connectDB from '@/app/lib/db';
+import Reservation, { ReservationStatus } from '@/app/models/Reservation';
+import { requireAuth } from '@/app/lib/auth';
+
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const auth = requireAuth(request);
+    if (auth.errorResponse) {
+      return auth.errorResponse;
+    }
+
+    await connectDB();
+
+    const { id } = await context.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json(
+        { success: false, message: 'Mã đơn đặt bàn (ID) không hợp lệ.' },
+        { status: 400 }
+      );
+    }
+
+    const reservation = await Reservation.findById(id);
+    if (!reservation) {
+      return NextResponse.json(
+        { success: false, message: 'Không tìm thấy đơn đặt bàn.' },
+        { status: 404 }
+      );
+    }
+
+    const isStaffOrAdmin = auth.user.role === 'staff' || auth.user.role === 'admin';
+    if (!isStaffOrAdmin) {
+      if (!reservation.userId || reservation.userId.toString() !== auth.user.userId) {
+        return NextResponse.json(
+          { success: false, message: 'Bạn không có quyền hủy đơn đặt bàn này.' },
+          { status: 403 }
+        );
+      }
+    }
+
+    if (reservation.status === ReservationStatus.CANCELLED) {
+      return NextResponse.json(
+        { success: false, message: 'Đơn đặt bàn này đã được hủy từ trước.' },
+        { status: 400 }
+      );
+    }
+
+    const bookingDateTimeStr = `${reservation.date}T${reservation.time}:00+07:00`;
+    const bookingTime = new Date(bookingDateTimeStr).getTime();
+    const currentTime = Date.now();
+
+    if (Number.isNaN(bookingTime)) {
+      return NextResponse.json(
+        { success: false, message: 'Thời gian đặt bàn không hợp lệ.' },
+        { status: 400 }
+      );
+    }
+
+    const diffInMinutes = (bookingTime - currentTime) / (1000 * 60);
+
+    if (diffInMinutes <= 0) {
+      return NextResponse.json(
+        { success: false, message: 'Không thể hủy đơn đặt bàn đã qua thời gian hẹn.' },
+        { status: 400 }
+      );
+    }
+
+    if (diffInMinutes <= 60) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Chỉ được phép hủy đơn trước giờ hẹn ít nhất 60 phút.',
+        },
+        { status: 400 }
+      );
+    }
+
+    reservation.status = ReservationStatus.CANCELLED;
+    await reservation.save();
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: 'Hủy đơn đặt bàn thành công!',
+        data: {
+          id: reservation._id,
+          bookingCode: reservation.bookingCode,
+          status: reservation.status,
+          cancelledAt: new Date(),
+        },
+      },
+      { status: 200 }
+    );
+  } catch (error: unknown) {
+    console.error('Lỗi khi hủy đơn đặt bàn:', error);
+    return NextResponse.json(
+      { success: false, message: 'Lỗi hệ thống server.' },
+      { status: 500 }
+    );
+  }
+}
