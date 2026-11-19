@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Types } from 'mongoose';
 import crypto from 'crypto';
 import connectDB from '@/app/lib/db';
-import Transaction from '@/app/models/Transaction';
-import Reservation from '@/app/models/Reservation';
+import Transaction, {
+  PaymentProvider,
+  TransactionStatus,
+} from '@/app/models/Transaction';
+import Reservation, { PaymentStatus } from '@/app/models/Reservation';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,8 +72,9 @@ export async function GET(request: NextRequest) {
 
     // 4. Lọc theo trạng thái giao dịch
     if (status) {
-      const validStatuses = ['PENDING', 'SUCCESS', 'FAILED', 'EXPIRED'];
-      if (!validStatuses.includes(status.toUpperCase())) {
+      const validStatuses: readonly string[] = Object.values(TransactionStatus);
+      const upperStatus = status.toUpperCase();
+      if (!validStatuses.includes(upperStatus)) {
         return NextResponse.json(
           {
             success: false,
@@ -80,13 +84,14 @@ export async function GET(request: NextRequest) {
           { status: 400 }
         );
       }
-      filter.status = status.toUpperCase();
+      filter.status = upperStatus;
     }
 
     // 5. Lọc theo cổng thanh toán
     if (provider) {
-      const validProviders = ['VNPAY', 'MOMO'];
-      if (!validProviders.includes(provider.toUpperCase())) {
+      const validProviders: readonly string[] = Object.values(PaymentProvider);
+      const upperProvider = provider.toUpperCase();
+      if (!validProviders.includes(upperProvider)) {
         return NextResponse.json(
           {
             success: false,
@@ -96,7 +101,7 @@ export async function GET(request: NextRequest) {
           { status: 400 }
         );
       }
-      filter.provider = provider.toUpperCase();
+      filter.provider = upperProvider;
     }
 
     // 6. Thực hiện truy vấn danh sách (loại bỏ rawResponse để đảm bảo an toàn bảo mật)
@@ -200,23 +205,25 @@ export async function POST(request: NextRequest) {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     // 4. Tạo bản ghi Transaction
-    const validProvider = ['VNPAY', 'MOMO', 'BANK_QR'].includes(String(provider).toUpperCase())
-      ? (String(provider).toUpperCase() as 'VNPAY' | 'MOMO' | 'BANK_QR')
-      : 'BANK_QR';
+    const validProviders: readonly string[] = Object.values(PaymentProvider);
+    const upperProvider = String(provider).toUpperCase();
+    const validProvider: PaymentProvider = validProviders.includes(upperProvider)
+      ? (upperProvider as PaymentProvider)
+      : PaymentProvider.BANK_QR;
 
     const newTransaction = await Transaction.create({
       reservationId: reservation._id,
       userId: userId && Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : reservation.userId || null,
       amount: amount,
       provider: validProvider,
-      status: 'PENDING',
+      status: TransactionStatus.PENDING,
       transactionRef: transactionRef,
       expiresAt: expiresAt,
     });
 
     // 5. Cập nhật Reservation: depositAmount, paymentStatus = 'PENDING', holdExpiresAt = expiresAt
     reservation.depositAmount = amount;
-    reservation.paymentStatus = 'PENDING';
+    reservation.paymentStatus = PaymentStatus.PENDING;
     reservation.holdExpiresAt = expiresAt;
     await reservation.save();
 

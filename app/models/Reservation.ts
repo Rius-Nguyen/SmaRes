@@ -26,6 +26,7 @@ export interface IReservation {
   tableId: Types.ObjectId | string;
   tableNumber: string;
   customerName: string;
+  customerEmail?: string;
   phone: string;
   date: string;
   time: string;
@@ -65,6 +66,12 @@ const ReservationSchema = new Schema<IReservation>(
       type: String,
       trim: true,
       default: 'Khách tại bàn',
+    },
+    customerEmail: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      default: '',
     },
     phone: {
       type: String,
