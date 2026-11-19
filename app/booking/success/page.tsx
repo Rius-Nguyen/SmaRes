@@ -4,6 +4,7 @@ import { Suspense, useState, useEffect, useMemo, useSyncExternalStore } from 're
 import Link from 'next/link';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
+import { formatMoney } from '@/app/lib/format';
 
 interface LastBookingSnapshot {
   bookingCode?: string;
@@ -238,7 +239,7 @@ function BookingSuccessContent() {
                 <span className="font-semibold text-stone-800">Thực đơn đặt trước:</span>{' '}
                 {itemCount > 0 ? (
                   <span className="text-[#d97706] font-bold">
-                    {itemCount} món ({totalPrice.toLocaleString('vi-VN')}đ)
+                    {itemCount} món ({formatMoney(totalPrice)})
                   </span>
                 ) : (
                   <span className="text-stone-400 italic">Gọi món tại bàn</span>
@@ -259,9 +260,12 @@ function BookingSuccessContent() {
                   className="w-full h-full rounded-lg bg-[#ebe7df] animate-pulse"
                 />
               ) : dynamicQrUrl ? (
-                <img
+                <Image
                   src={dynamicQrUrl}
                   alt={`Mã QR bàn ${tableNumber}`}
+                  width={112}
+                  height={112}
+                  unoptimized
                   className="w-full h-full object-contain rounded-md"
                 />
               ) : qrHasError ? (
