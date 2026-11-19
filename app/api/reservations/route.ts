@@ -1,18 +1,65 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
-import crypto from 'crypto';
 import connectDB from '@/app/lib/db';
+import { generateBookingCode, parseVietnamDateTime } from '@/app/lib/reservationHelpers';
 import Table from '@/app/models/Table';
 import Reservation, { ReservationStatus } from '@/app/models/Reservation';
 import { getAuthUser, requireAuth } from '@/app/lib/auth';
 
+export const dynamic = 'force-dynamic';
+
+const VALID_RESERVATION_STATUSES: readonly string[] = Object.values(ReservationStatus);
+
+function isReservationStatus(value: string): value is ReservationStatus {
+  return VALID_RESERVATION_STATUSES.includes(value);
+}
+
+function extractMongoErrorCode(error: unknown): number | undefined {
+  if (typeof error !== 'object' || error === null) {
+    return undefined;
+  }
+
+  if ('code' in error && typeof (error as { code?: unknown }).code === 'number') {
+    return (error as { code: number }).code;
+  }
+
+  if ('cause' in error) {
+    return extractMongoErrorCode((error as { cause?: unknown }).cause);
+  }
+
+  return undefined;
+}
+
 function isMongoDuplicateKeyError(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    (error as { code?: unknown }).code === 11000
-  );
+  return extractMongoErrorCode(error) === 11000;
+}
+
+function isBookingCodeDuplicateError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+
+  const record = error as { keyPattern?: unknown; message?: unknown; cause?: unknown };
+  if (typeof record.keyPattern === 'object' && record.keyPattern !== null) {
+    const keys = Object.keys(record.keyPattern);
+    if (keys.includes('bookingCode') && !keys.includes('tableId')) {
+      return true;
+    }
+  }
+
+  if (
+    typeof record.message === 'string' &&
+    record.message.includes('bookingCode') &&
+    !record.message.includes('uniq_active_table_slot')
+  ) {
+    return true;
+  }
+
+  if ('cause' in record) {
+    return isBookingCodeDuplicateError(record.cause);
+  }
+
+  return false;
 }
 
 export async function GET(request: NextRequest) {
@@ -24,8 +71,35 @@ export async function GET(request: NextRequest) {
 
     await connectDB();
 
+    const { searchParams } = new URL(request.url);
+    const rawBookingCode = searchParams.get('bookingCode')?.trim() ?? '';
+    const rawStatus = searchParams.get('status')?.trim() ?? '';
+
+    const filter: {
+      userId?: string;
+      bookingCode?: string;
+      status?: ReservationStatus;
+    } = {};
+
     const isStaffOrAdmin = auth.user.role === 'staff' || auth.user.role === 'admin';
-    const filter = isStaffOrAdmin ? {} : { userId: auth.user.userId };
+    if (!isStaffOrAdmin) {
+      filter.userId = auth.user.userId;
+    }
+
+    if (rawBookingCode) {
+      filter.bookingCode = rawBookingCode.toUpperCase();
+    }
+
+    if (rawStatus) {
+      const normalizedStatus = rawStatus.toUpperCase();
+      if (!isReservationStatus(normalizedStatus)) {
+        return NextResponse.json(
+          { success: false, message: 'Trạng thái đặt bàn không hợp lệ.' },
+          { status: 400 }
+        );
+      }
+      filter.status = normalizedStatus;
+    }
 
     const reservations = await Reservation.find(filter).sort({ createdAt: -1 }).lean();
 
@@ -70,6 +144,8 @@ export async function POST(request: NextRequest) {
 
     const body = rawBody as Record<string, unknown>;
     const tableId = typeof body.tableId === 'string' ? body.tableId.trim() : '';
+    const tableNumberInput =
+      typeof body.tableNumber === 'string' ? body.tableNumber.trim().toUpperCase() : '';
     const date = typeof body.date === 'string' ? body.date.trim() : '';
     const time = typeof body.time === 'string' ? body.time.trim() : '';
     const phone = typeof body.phone === 'string' ? body.phone.trim() : '';
@@ -82,32 +158,62 @@ export async function POST(request: NextRequest) {
     const guestsNum =
       typeof body.guests === 'number'
         ? body.guests
-        : typeof body.guests === 'string'
-          ? Number.parseInt(body.guests, 10)
+        : typeof body.guests === 'string' && body.guests.trim() !== ''
+          ? Number(body.guests.trim())
           : Number.NaN;
 
-    if (!tableId || !date || !time || !phone || !Number.isFinite(guestsNum) || guestsNum < 1) {
+    if (
+      (!tableId && !tableNumberInput) ||
+      !date ||
+      !time ||
+      !phone ||
+      !Number.isInteger(guestsNum) ||
+      guestsNum < 1
+    ) {
       return NextResponse.json(
         {
           success: false,
-          message: 'Vui lòng nhập đầy đủ: tableId, date, time, guests, phone.',
+          message: 'Vui lòng nhập đầy đủ: tableId hoặc tableNumber, date, time, guests (>= 1), phone.',
         },
         { status: 400 }
       );
     }
 
-    if (!mongoose.Types.ObjectId.isValid(tableId)) {
+    if (Number.isNaN(parseVietnamDateTime(date, time))) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Ngày hoặc khung giờ đặt bàn không hợp lệ (YYYY-MM-DD và HH:mm).',
+        },
+        { status: 400 }
+      );
+    }
+
+    if (tableId && !mongoose.Types.ObjectId.isValid(tableId)) {
       return NextResponse.json(
         { success: false, message: 'Mã bàn (tableId) không hợp lệ.' },
         { status: 400 }
       );
     }
 
-    const table = await Table.findById(tableId);
+    const table = tableId
+      ? await Table.findById(tableId)
+      : await Table.findOne({ tableNumber: tableNumberInput });
+
     if (!table) {
       return NextResponse.json(
         { success: false, message: 'Không tìm thấy bàn được chọn.' },
         { status: 404 }
+      );
+    }
+
+    if (table.capacity < guestsNum) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Số lượng khách (${guestsNum}) vượt quá sức chứa của bàn ${table.tableNumber} (${table.capacity} chỗ).`,
+        },
+        { status: 400 }
       );
     }
 
@@ -116,7 +222,9 @@ export async function POST(request: NextRequest) {
       date,
       time,
       status: { $ne: ReservationStatus.CANCELLED },
-    });
+    })
+      .select('_id')
+      .lean();
 
     if (existingReservation) {
       return NextResponse.json(
@@ -125,42 +233,61 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const bookingCode = `RES-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const bookingCode = generateBookingCode();
+      try {
+        const newReservation = await Reservation.create({
+          userId: user?.userId ?? null,
+          tableId: table._id,
+          tableNumber: table.tableNumber,
+          customerName,
+          bookingCode,
+          date,
+          time,
+          guests: guestsNum,
+          phone,
+          note,
+          status: ReservationStatus.CONFIRMED,
+        });
 
-    const newReservation = await Reservation.create({
-      userId: user?.userId ?? null,
-      tableId: table._id,
-      tableNumber: table.tableNumber,
-      customerName,
-      bookingCode,
-      date,
-      time,
-      guests: guestsNum,
-      phone,
-      note,
-      status: ReservationStatus.CONFIRMED,
-    });
+        return NextResponse.json(
+          {
+            success: true,
+            message: 'Tạo đơn đặt bàn thành công!',
+            data: {
+              id: newReservation._id,
+              bookingCode: newReservation.bookingCode,
+              tableId: newReservation.tableId,
+              tableNumber: newReservation.tableNumber,
+              customerName: newReservation.customerName,
+              date: newReservation.date,
+              time: newReservation.time,
+              guests: newReservation.guests,
+              phone: newReservation.phone,
+              note: newReservation.note,
+              status: newReservation.status,
+              createdAt: newReservation.createdAt,
+            },
+          },
+          { status: 201 }
+        );
+      } catch (createError: unknown) {
+        if (isMongoDuplicateKeyError(createError)) {
+          if (isBookingCodeDuplicateError(createError) && attempt === 0) {
+            continue;
+          }
+          return NextResponse.json(
+            { success: false, message: 'Bàn này đã có người đặt vào khung giờ đã chọn!' },
+            { status: 409 }
+          );
+        }
+        throw createError;
+      }
+    }
 
     return NextResponse.json(
-      {
-        success: true,
-        message: 'Tạo đơn đặt bàn thành công!',
-        data: {
-          id: newReservation._id,
-          bookingCode: newReservation.bookingCode,
-          tableId: newReservation.tableId,
-          tableNumber: newReservation.tableNumber,
-          customerName: newReservation.customerName,
-          date: newReservation.date,
-          time: newReservation.time,
-          guests: newReservation.guests,
-          phone: newReservation.phone,
-          note: newReservation.note,
-          status: newReservation.status,
-          createdAt: newReservation.createdAt,
-        },
-      },
-      { status: 201 }
+      { success: false, message: 'Bàn này đã có người đặt vào khung giờ đã chọn!' },
+      { status: 409 }
     );
   } catch (error: unknown) {
     if (isMongoDuplicateKeyError(error)) {

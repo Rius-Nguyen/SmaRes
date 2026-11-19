@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import connectDB from '@/app/lib/db';
+import { evaluateCancellationWindow } from '@/app/lib/reservationHelpers';
 import Reservation, { ReservationStatus } from '@/app/models/Reservation';
 import { requireAuth } from '@/app/lib/auth';
 
@@ -50,31 +51,22 @@ export async function PATCH(
       );
     }
 
-    const bookingDateTimeStr = `${reservation.date}T${reservation.time}:00+07:00`;
-    const bookingTime = new Date(bookingDateTimeStr).getTime();
-    const currentTime = Date.now();
-
-    if (Number.isNaN(bookingTime)) {
+    if (
+      reservation.status === ReservationStatus.CHECKED_IN ||
+      reservation.status === ReservationStatus.COMPLETED
+    ) {
       return NextResponse.json(
-        { success: false, message: 'Thời gian đặt bàn không hợp lệ.' },
+        { success: false, message: 'Không thể hủy đơn đặt bàn đã nhận bàn hoặc đã hoàn thành.' },
         { status: 400 }
       );
     }
 
-    const diffInMinutes = (bookingTime - currentTime) / (1000 * 60);
-
-    if (diffInMinutes <= 0) {
-      return NextResponse.json(
-        { success: false, message: 'Không thể hủy đơn đặt bàn đã qua thời gian hẹn.' },
-        { status: 400 }
-      );
-    }
-
-    if (diffInMinutes <= 60) {
+    const windowEvaluation = evaluateCancellationWindow(reservation.date, reservation.time);
+    if (!windowEvaluation.allowed) {
       return NextResponse.json(
         {
           success: false,
-          message: 'Chỉ được phép hủy đơn trước giờ hẹn ít nhất 60 phút.',
+          message: windowEvaluation.reason ?? 'Chỉ được phép hủy đơn trước giờ hẹn ít nhất 60 phút.',
         },
         { status: 400 }
       );
