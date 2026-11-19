@@ -24,16 +24,13 @@ export async function PATCH(request, { params }) {
 
         const { id } = await params; // Lấy :id từ URL
 
-        // Kiểm tra id có đúng định dạng ObjectId của MongoDB không
-        if (!mongoose.Types.ObjectId.isValid(id)) {
-            return NextResponse.json(
-                { success: false, message: "Mã đơn đặt bàn (ID) không hợp lệ." },
-                { status: 400 }
-            );
+        let reservation = null;
+        if (mongoose.Types.ObjectId.isValid(id)) {
+            reservation = await Reservation.findById(id);
         }
-
-        // Tìm đơn đặt bàn theo ID
-        const reservation = await Reservation.findById(id);
+        if (!reservation) {
+            reservation = await Reservation.findOne({ bookingCode: String(id).trim() });
+        }
 
         if (!reservation) {
             return NextResponse.json(
