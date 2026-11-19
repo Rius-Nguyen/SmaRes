@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { Be_Vietnam_Pro, Playfair_Display } from "next/font/google";
 import "./globals.css";
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
 import { CartProvider } from "@/app/context/CartContext";
+import { ToastProvider } from "@/components/ui/Toast";
+import AppShell from "@/components/AppShell";
 
 const playfairDisplay = Playfair_Display({
   weight: ["400", "500", "600", "700", "800"],
@@ -33,11 +33,11 @@ export default function RootLayout({
     <html lang="vi" suppressHydrationWarning className={`${playfairDisplay.variable} ${beVietnamPro.variable}`}>
       <body suppressHydrationWarning className="min-h-full flex flex-col antialiased bg-[#faf8f5] text-[#1c1917] font-sans selection:bg-[#dcfce7] selection:text-[#14532d]">
         <CartProvider>
-          <Navbar />
-          <div className="flex-1">
-            {children}
-          </div>
-          <Footer />
+          <ToastProvider>
+            <AppShell>
+              {children}
+            </AppShell>
+          </ToastProvider>
         </CartProvider>
       </body>
     </html>

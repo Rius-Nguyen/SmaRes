@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useToast } from '@/components/ui/Toast';
 
 interface AuthCardProps {
   initialMode?: 'login' | 'register';
@@ -10,6 +11,7 @@ interface AuthCardProps {
 
 export default function AuthCard({ initialMode = 'login' }: AuthCardProps) {
   const router = useRouter();
+  const { showToast } = useToast();
 
   // Chế độ hiện tại: 'login' hoặc 'register'
   const [mode, setMode] = useState<'login' | 'register'>(initialMode);
@@ -88,14 +90,14 @@ export default function AuthCard({ initialMode = 'login' }: AuthCardProps) {
             ? redirectParam
             : '/';
 
-        alert("Đăng nhập thành công!");
+        showToast('Đăng nhập thành công! Chào mừng bạn quay lại SmaRes.', 'success');
         router.push(safeRedirect);
       } else {
-        alert(`Lỗi: ${data.message || "Tài khoản hoặc mật khẩu không chính xác"}`);
+        showToast(data.message || 'Tài khoản hoặc mật khẩu không chính xác.', 'error');
       }
     } catch (error) {
       console.error("Lỗi khi gọi API:", error);
-      alert("Đã xảy ra lỗi kết nối với máy chủ.");
+      showToast('Đã xảy ra lỗi kết nối với máy chủ. Vui lòng thử lại.', 'error');
     } finally {
       setIsLoginLoading(false);
     }
@@ -123,8 +125,13 @@ export default function AuthCard({ initialMode = 'login' }: AuthCardProps) {
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (registerData.password.length < 6) {
+      showToast('Mật khẩu phải có tối thiểu 6 ký tự.', 'error');
+      return;
+    }
+
     if (registerData.password !== registerData.confirmPassword) {
-      alert("Mật khẩu xác nhận không khớp!");
+      showToast('Mật khẩu xác nhận không khớp!', 'error');
       return;
     }
 
@@ -152,14 +159,16 @@ export default function AuthCard({ initialMode = 'login' }: AuthCardProps) {
       }
 
       if (response.ok) {
-        alert("Đăng ký tài khoản thành công! Xin mời đăng nhập.");
+        showToast('Đăng ký tài khoản thành công! Xin mời đăng nhập.', 'success');
+        setLoginData((prev) => ({ ...prev, email: registerData.email }));
+        setRegisterData((prev) => ({ ...prev, password: '', confirmPassword: '' }));
         switchMode('login'); // Chuyển sang tab đăng nhập mượt mà không load lại trang
       } else {
-        alert(`Lỗi: ${data?.message || "Không thể đăng ký"}`);
+        showToast(data?.message || 'Không thể đăng ký tài khoản lúc này.', 'error');
       }
     } catch (error) {
       console.error("Lỗi khi gọi API:", error);
-      alert("Đã xảy ra lỗi kết nối với máy chủ.");
+      showToast('Đã xảy ra lỗi kết nối với máy chủ. Vui lòng thử lại.', 'error');
     } finally {
       setIsRegisterLoading(false);
     }
@@ -258,7 +267,7 @@ export default function AuthCard({ initialMode = 'login' }: AuthCardProps) {
             </span>
           </Link>
 
-          <h1 className="text-2xl sm:text-3xl font-bold text-stone-900 tracking-tight transition-all duration-300">
+          <h1 className="text-2xl sm:text-3xl font-serif font-bold text-stone-900 tracking-tight transition-all duration-300">
             {mode === 'login' ? 'Đăng Nhập' : 'Tạo Tài Khoản'}
           </h1>
           <p className="text-stone-500 text-sm mt-1.5 max-w-xs leading-relaxed transition-all duration-300">
@@ -347,12 +356,18 @@ export default function AuthCard({ initialMode = 'login' }: AuthCardProps) {
                     <label className="block text-xs sm:text-sm font-semibold text-stone-700">
                       Mật khẩu <span className="text-amber-600 font-bold">*</span>
                     </label>
-                    <a 
-                      href="#" 
-                      className="text-xs font-semibold text-emerald-800 hover:text-amber-700 hover:underline transition-colors"
+                    <button
+                      type="button"
+                      onClick={() =>
+                        showToast(
+                          'Vui lòng liên hệ hotline 1900 1234 hoặc trang Liên hệ để được hỗ trợ khôi phục mật khẩu.',
+                          'info'
+                        )
+                      }
+                      className="text-xs font-semibold text-emerald-800 hover:text-amber-700 hover:underline transition-colors cursor-pointer"
                     >
                       Quên mật khẩu?
-                    </a>
+                    </button>
                   </div>
                   <div className="relative group">
                     <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 group-focus-within:text-emerald-800 transition-colors pointer-events-none">
@@ -583,13 +598,13 @@ export default function AuthCard({ initialMode = 'login' }: AuthCardProps) {
                   />
                   <label htmlFor="terms" className="text-xs text-stone-600 leading-relaxed cursor-pointer select-none">
                     Tôi đồng ý với{' '}
-                    <a href="#" className="text-emerald-800 font-semibold hover:text-amber-700 hover:underline transition-colors">
+                    <Link href="/about#terms" className="text-emerald-800 font-semibold hover:text-amber-700 hover:underline transition-colors">
                       Điều khoản sử dụng
-                    </a>{' '}
+                    </Link>{' '}
                     và{' '}
-                    <a href="#" className="text-emerald-800 font-semibold hover:text-amber-700 hover:underline transition-colors">
+                    <Link href="/contact#privacy" className="text-emerald-800 font-semibold hover:text-amber-700 hover:underline transition-colors">
                       Chính sách bảo mật
-                    </a>{' '}
+                    </Link>{' '}
                     của SmaRes.
                   </label>
                 </div>
@@ -621,13 +636,19 @@ export default function AuthCard({ initialMode = 'login' }: AuthCardProps) {
           </div>
         </div>
 
-        {/* 3. Đường dẫn phụ quay về trang chủ */}
-        <div className="mt-6 pt-5 border-t border-stone-100 text-center">
+        {/* 3. Đường dẫn phụ quay về trang chủ & hỗ trợ */}
+        <div className="mt-6 pt-5 border-t border-stone-100 flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm">
           <Link
             href="/"
-            className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-medium text-stone-500 hover:text-emerald-800 transition-colors"
+            className="inline-flex items-center gap-1.5 font-medium text-stone-500 hover:text-emerald-800 transition-colors"
           >
             <span>←</span> Quay lại Trang chủ SmaRes
+          </Link>
+          <Link
+            href="/contact"
+            className="font-medium text-emerald-800 hover:text-amber-700 hover:underline transition-colors"
+          >
+            Hỗ trợ tài khoản →
           </Link>
         </div>
 
