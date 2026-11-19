@@ -11,6 +11,7 @@ import {
   type SemanticDishResult,
 } from '@/app/lib/semanticMenuSearch';
 import DishCard from '@/components/menu/DishCard';
+import TableSessionHeader from '@/components/menu/TableSessionHeader';
 import CustomizationModal from '@/components/menu/CustomizationModal';
 import CallWaiterModal from '@/components/menu/CallWaiterModal';
 import SpecialDishModal from '@/components/menu/SpecialDishModal';
@@ -558,9 +559,20 @@ function TableMenuContent() {
   // GIAO DIỆN 3: THỰC ĐƠN ĐIỆN TỬ TẠI BÀN KHI ĐÃ SEATED (ALLOWED)
   // =========================================================================
   return (
+    
     <main className="min-h-screen bg-[#FAF8F5] pb-28 text-[#1C1917] font-sans selection:bg-[#14532d]/20 selection:text-[#14532d]">
+      <TableSessionHeader
+        tableNumber={currentTableNumber}
+        zoneName={tableAccessInfo?.zone_name || 'Khu vực chính'}
+        customerName={tableAccessInfo?.customer_name}
+        sessionStatus="SEATED"
+        canOrder={tableAccessInfo?.can_order ?? true}
+        totalItems={totalItems}
+        onRefresh={() => void handleRecheckTableAccess()}
+        onOpenCallWaiter={() => setIsCallWaiterOpen(true)}
+      />
       {/* Banner xác nhận phiên phục vụ */}
-      <div className="bg-[#DCFCE7]/90 border-b border-[#86EFAC]/70 px-4 py-2 text-center text-xs text-[#15803D] flex flex-wrap items-center justify-center gap-2 shadow-2xs">
+
         <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
         <span className="font-bold tracking-tight">Bàn số {currentTableNumber}</span>
         <span className="text-emerald-400">•</span>
@@ -580,10 +592,10 @@ function TableMenuContent() {
             </span>
           </>
         )}
-      </div>
+      
 
       {/* Thanh header điều hướng tại bàn */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-[#EBE7DF] shadow-xs">
+      
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Link href="/" className="flex items-center gap-2 group">
@@ -641,7 +653,7 @@ function TableMenuContent() {
             </Link>
           </div>
         </div>
-      </header>
+      
 
       {/* Khối tìm kiếm câu lệnh tự nhiên & Prompt Chips */}
       <section className="bg-gradient-to-b from-white via-white to-[#FAF8F5] border-b border-[#EBE7DF] pt-5 pb-4 px-4 sm:px-6 shadow-2xs">
