@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/app/lib/db';
 import { parseVietnamDateTime } from '@/app/lib/reservationHelpers';
+import { releaseExpiredLocksAndHolds } from '@/app/lib/tableLockService';
 import Table from '@/app/models/Table';
+import TableLock from '@/app/models/TableLock';
 import Reservation, { ReservationStatus } from '@/app/models/Reservation';
 
 export const dynamic = 'force-dynamic';
@@ -26,7 +28,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const [tables, bookedReservations] = await Promise.all([
+    const now = new Date();
+    // Giải phóng các khóa giữ chỗ đã quá hạn 10 phút trước khi truy vấn bàn trống
+    await releaseExpiredLocksAndHolds({ date, time, now });
+
+    const [tables, bookedReservations, activeLocks] = await Promise.all([
       Table.find({ capacity: { $gte: guests } })
         .select('_id tableNumber capacity zoneName status')
         .sort({ tableNumber: 1 })
@@ -38,18 +44,40 @@ export async function GET(request: NextRequest) {
       })
         .select('tableId')
         .lean(),
+      TableLock.find({
+        date,
+        time,
+        expiresAt: { $gt: now },
+      })
+        .select('tableId expiresAt')
+        .lean(),
     ]);
 
     const bookedTableIds = new Set(bookedReservations.map((res) => String(res.tableId)));
+    const lockedUntilByTableId = new Map<string, string>();
+    for (const lock of activeLocks) {
+      const expiresIso =
+        lock.expiresAt instanceof Date
+          ? lock.expiresAt.toISOString()
+          : new Date(lock.expiresAt).toISOString();
+      lockedUntilByTableId.set(String(lock.tableId), expiresIso);
+    }
 
-    const availabilityList = tables.map((table) => ({
-      id: String(table._id),
-      tableNumber: table.tableNumber || '',
-      capacity: table.capacity,
-      zoneName: table.zoneName || 'Khu vực chính',
-      status: table.status,
-      isAvailable: !bookedTableIds.has(String(table._id)),
-    }));
+    const availabilityList = tables.map((table) => {
+      const tableKey = String(table._id);
+      const lockedUntil = lockedUntilByTableId.get(tableKey) ?? null;
+      const isLocked = lockedUntil !== null;
+      return {
+        id: tableKey,
+        tableNumber: table.tableNumber || '',
+        capacity: table.capacity,
+        zoneName: table.zoneName || 'Khu vực chính',
+        status: table.status,
+        isLocked,
+        lockedUntil,
+        isAvailable: !bookedTableIds.has(tableKey) && !isLocked,
+      };
+    });
 
     return NextResponse.json(
       {

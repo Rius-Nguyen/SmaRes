@@ -154,6 +154,12 @@ export async function POST(request: NextRequest) {
       typeof body.customerName === 'string' && body.customerName.trim()
         ? body.customerName.trim()
         : 'Khách tại bàn';
+    const customerEmail =
+      typeof body.customerEmail === 'string' && body.customerEmail.trim()
+        ? body.customerEmail.trim().toLowerCase()
+        : typeof body.email === 'string' && body.email.trim()
+          ? body.email.trim().toLowerCase()
+          : '';
 
     const guestsNum =
       typeof body.guests === 'number'
@@ -241,6 +247,7 @@ export async function POST(request: NextRequest) {
           tableId: table._id,
           tableNumber: table.tableNumber,
           customerName,
+          ...(customerEmail ? { customerEmail } : {}),
           bookingCode,
           date,
           time,

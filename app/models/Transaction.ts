@@ -1,7 +1,23 @@
 import { Schema, model, models, Model, Types } from 'mongoose';
 
-export type PaymentProvider = 'VNPAY' | 'MOMO' | 'BANK_QR';
-export type TransactionStatus = 'PENDING' | 'SUCCESS' | 'FAILED' | 'EXPIRED';
+export const PaymentProvider = {
+  VNPAY: 'VNPAY',
+  MOMO: 'MOMO',
+  BANK_QR: 'BANK_QR',
+} as const;
+
+export type PaymentProvider = (typeof PaymentProvider)[keyof typeof PaymentProvider];
+
+export const TransactionStatus = {
+  PENDING: 'PENDING',
+  PAID: 'PAID',
+  FAILED: 'FAILED',
+  EXPIRED: 'EXPIRED',
+  REFUNDED: 'REFUNDED',
+} as const;
+
+export type TransactionStatus =
+  (typeof TransactionStatus)[keyof typeof TransactionStatus];
 
 export interface ITransaction {
   _id?: Types.ObjectId | string;
@@ -11,6 +27,7 @@ export interface ITransaction {
   provider: PaymentProvider;
   status: TransactionStatus;
   transactionRef: string;
+  lockSessionId?: string | null;
   providerTransactionNo?: string | null;
   paymentUrl?: string | null;
   rawResponse?: Record<string, unknown> | null;
@@ -41,7 +58,7 @@ const TransactionSchema = new Schema<ITransaction>(
     provider: {
       type: String,
       enum: {
-        values: ['VNPAY', 'MOMO', 'BANK_QR'],
+        values: Object.values(PaymentProvider),
         message: 'Cổng thanh toán không hợp lệ: {VALUE}',
       },
       required: [true, 'Vui lòng chọn cổng thanh toán (VNPAY, MOMO hoặc BANK_QR)'],
@@ -49,10 +66,10 @@ const TransactionSchema = new Schema<ITransaction>(
     status: {
       type: String,
       enum: {
-        values: ['PENDING', 'SUCCESS', 'FAILED', 'EXPIRED'],
+        values: Object.values(TransactionStatus),
         message: 'Trạng thái giao dịch không hợp lệ: {VALUE}',
       },
-      default: 'PENDING',
+      default: TransactionStatus.PENDING,
       index: true,
     },
     transactionRef: {
@@ -60,6 +77,11 @@ const TransactionSchema = new Schema<ITransaction>(
       required: [true, 'Vui lòng cung cấp mã tham chiếu giao dịch (transactionRef)'],
       unique: true,
       trim: true,
+    },
+    lockSessionId: {
+      type: String,
+      trim: true,
+      default: null,
     },
     providerTransactionNo: {
       type: String,
