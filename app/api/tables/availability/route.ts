@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/app/lib/db';
+import { parseVietnamDateTime } from '@/app/lib/reservationHelpers';
 import Table from '@/app/models/Table';
 import Reservation, { ReservationStatus } from '@/app/models/Reservation';
 
-const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-const TIME_REGEX = /^\d{2}:\d{2}$/;
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     const parsedGuests = Number.parseInt(searchParams.get('guests') ?? '', 10);
     const guests = Number.isNaN(parsedGuests) || parsedGuests < 1 ? 1 : parsedGuests;
 
-    if (!date || !time || !DATE_REGEX.test(date) || !TIME_REGEX.test(time)) {
+    if (!date || !time || Number.isNaN(parseVietnamDateTime(date, time))) {
       return NextResponse.json(
         {
           success: false,
@@ -26,20 +26,24 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const tables = await Table.find({ capacity: { $gte: guests } }).lean();
-
-    const bookedReservations = await Reservation.find({
-      date,
-      time,
-      status: { $ne: ReservationStatus.CANCELLED },
-    })
-      .select('tableId')
-      .lean();
+    const [tables, bookedReservations] = await Promise.all([
+      Table.find({ capacity: { $gte: guests } })
+        .select('_id tableNumber capacity zoneName status')
+        .sort({ tableNumber: 1 })
+        .lean(),
+      Reservation.find({
+        date,
+        time,
+        status: { $ne: ReservationStatus.CANCELLED },
+      })
+        .select('tableId')
+        .lean(),
+    ]);
 
     const bookedTableIds = new Set(bookedReservations.map((res) => String(res.tableId)));
 
     const availabilityList = tables.map((table) => ({
-      id: table._id,
+      id: String(table._id),
       tableNumber: table.tableNumber,
       capacity: table.capacity,
       zoneName: table.zoneName,
