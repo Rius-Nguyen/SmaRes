@@ -136,6 +136,15 @@ async function getRoleFromToken(request: NextRequest): Promise<AuthRole | null> 
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  if (pathname === '/booking' || pathname.startsWith('/booking/')) {
+    const role = await getRoleFromToken(request);
+    if (role === 'admin') {
+      return NextResponse.redirect(new URL('/403', request.url));
+    }
+    return NextResponse.next();
+  }
+
   const matchedRule = ROUTE_ROLE_RULES.find((rule) =>
     rule.prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
   );
@@ -159,5 +168,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/staff/:path*', '/kds/:path*', '/history/:path*'],
+  matcher: ['/admin/:path*', '/staff/:path*', '/kds/:path*', '/history/:path*', '/booking/:path*'],
 };

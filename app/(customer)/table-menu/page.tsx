@@ -16,6 +16,7 @@ import CustomizationModal from '@/components/menu/CustomizationModal';
 import CallWaiterModal from '@/components/menu/CallWaiterModal';
 import SpecialDishModal from '@/components/menu/SpecialDishModal';
 import { useToast } from '@/components/ui/Toast';
+import { useAuthSession } from '@/app/lib/useAuthSession';
 
 type PromptChipId = 'thanh-dam' | 'cay-nong' | 'best-seller' | 'giai-nhiet';
 
@@ -174,6 +175,7 @@ function TableMenuContent() {
   const searchParams = useSearchParams();
   const tableParam = searchParams.get('table');
   const { showToast } = useToast();
+  const { isAdmin } = useAuthSession();
 
   const {
     cart,
@@ -481,15 +483,17 @@ function TableMenuContent() {
             </div>
 
             <div className="space-y-3">
-              <Link
-                href="/booking"
-                className="w-full bg-[#14532D] hover:bg-[#0F4C3A] text-white font-medium py-3.5 px-6 rounded-xl text-xs sm:text-sm transition-all shadow-sm flex items-center justify-center gap-2 group cursor-pointer active:scale-98"
-              >
-                <svg className="w-4 h-4 text-emerald-300 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-                </svg>
-                <span>Quét mã Check-in tại bàn</span>
-              </Link>
+              {!isAdmin && (
+                <Link
+                  href="/booking"
+                  className="w-full bg-[#14532D] hover:bg-[#0F4C3A] text-white font-medium py-3.5 px-6 rounded-xl text-xs sm:text-sm transition-all shadow-sm flex items-center justify-center gap-2 group cursor-pointer active:scale-98"
+                >
+                  <svg className="w-4 h-4 text-emerald-300 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                  </svg>
+                  <span>Quét mã Check-in tại bàn</span>
+                </Link>
+              )}
 
               <button
                 type="button"
