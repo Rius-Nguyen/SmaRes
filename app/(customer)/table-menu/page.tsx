@@ -11,7 +11,7 @@ import {
   type SemanticDishResult,
 } from '@/app/lib/semanticMenuSearch';
 import DishCard from '@/components/menu/DishCard';
-import TableSessionHeader from '@/components/menu/TableSessionHeader';
+import TableSessionHeader, { type TableSessionStatus } from '@/components/menu/TableSessionHeader';
 import CustomizationModal from '@/components/menu/CustomizationModal';
 import CallWaiterModal from '@/components/menu/CallWaiterModal';
 import SpecialDishModal from '@/components/menu/SpecialDishModal';
@@ -171,11 +171,24 @@ function PromptChipIcon({ id, isActive }: { id: PromptChipId; isActive: boolean 
   }
 }
 
+function syncQrTableSessionStorage(tableNumber: string, state: TableAccessState) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (state === 'ALLOWED') {
+      window.sessionStorage.setItem('smares_active_qr_table', tableNumber);
+    } else if (window.sessionStorage.getItem('smares_active_qr_table') === tableNumber) {
+      window.sessionStorage.removeItem('smares_active_qr_table');
+    }
+  } catch {
+    // Ignore storage access errors in restricted mobile webviews
+  }
+}
+
 function TableMenuContent() {
   const searchParams = useSearchParams();
-  const tableParam = searchParams.get('table');
+  const tableParam = (searchParams.get('table') ?? '').trim().toUpperCase();
   const { showToast } = useToast();
-  const { isAdmin } = useAuthSession();
+  const { isAdmin, isStaffOrAdmin } = useAuthSession();
 
   const {
     cart,
@@ -186,7 +199,8 @@ function TableMenuContent() {
     bookingInfo,
   } = useCart();
 
-  const currentTableNumber = tableParam || bookingInfo?.tableNumber || '04';
+  const currentTableNumber =
+    tableParam || (bookingInfo?.tableNumber ?? '').trim().toUpperCase() || '04';
 
   const [tableAccessState, setTableAccessState] = useState<TableAccessState>('CHECKING');
   const [tableAccessInfo, setTableAccessInfo] = useState<TableAccessInfo | null>(null);
@@ -211,6 +225,7 @@ function TableMenuContent() {
       setTableAccessState(state);
       setTableAccessInfo(info);
       setCheckedTable(currentTableNumber);
+      syncQrTableSessionStorage(currentTableNumber, state);
     });
 
     return () => {
@@ -224,6 +239,7 @@ function TableMenuContent() {
     setTableAccessState(state);
     setTableAccessInfo(info);
     setCheckedTable(currentTableNumber);
+    syncQrTableSessionStorage(currentTableNumber, state);
     setIsManualChecking(false);
   };
 
@@ -374,10 +390,15 @@ function TableMenuContent() {
     );
   }
 
+  const isStaffMenuPreview =
+    tableAccessState === 'LOCKED' &&
+    isStaffOrAdmin &&
+    tableAccessInfo?.status !== 'NOT_FOUND';
+
   // =========================================================================
   // GIAO DIỆN 2: MÀN HÌNH KHÓA GASTRONOMY LOCK SCREEN KHI BÀN CHƯA SEATED (LOCKED)
   // =========================================================================
-  if (tableAccessState === 'LOCKED') {
+  if (tableAccessState === 'LOCKED' && !isStaffMenuPreview) {
     return (
       <main className="min-h-screen bg-[#FAF8F5] relative flex flex-col justify-between selection:bg-[#14532d]/20 selection:text-[#14532d]">
         <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-[#EBE7DF]">
@@ -560,103 +581,84 @@ function TableMenuContent() {
   }
 
   // =========================================================================
-  // GIAO DIỆN 3: THỰC ĐƠN ĐIỆN TỬ TẠI BÀN KHI ĐÃ SEATED (ALLOWED)
+  // GIAO DIỆN 3: THỰC ĐƠN ĐIỆN TỬ TẠI BÀN KHI ĐÃ SEATED (ALLOWED) HOẶC XEM TRƯỚC STAFF/ADMIN
   // =========================================================================
+  const headerSessionStatus: TableSessionStatus =
+    tableAccessState === 'ALLOWED'
+      ? 'SEATED'
+      : tableAccessInfo?.status === 'AVAILABLE' ||
+          tableAccessInfo?.status === 'RESERVED' ||
+          tableAccessInfo?.status === 'CLEANING'
+        ? tableAccessInfo.status
+        : 'LOCKED';
+
   return (
-    
     <main className="min-h-screen bg-[#FAF8F5] pb-28 text-[#1C1917] font-sans selection:bg-[#14532d]/20 selection:text-[#14532d]">
       <TableSessionHeader
         tableNumber={currentTableNumber}
         zoneName={tableAccessInfo?.zone_name || 'Khu vực chính'}
         customerName={tableAccessInfo?.customer_name}
-        sessionStatus="SEATED"
-        canOrder={tableAccessInfo?.can_order ?? true}
+        sessionStatus={headerSessionStatus}
+        canOrder={tableAccessState === 'ALLOWED'}
         totalItems={totalItems}
         onRefresh={() => void handleRecheckTableAccess()}
         onOpenCallWaiter={() => setIsCallWaiterOpen(true)}
       />
-      {/* Banner xác nhận phiên phục vụ */}
 
-        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-        <span className="font-bold tracking-tight">Bàn số {currentTableNumber}</span>
-        <span className="text-emerald-400">•</span>
-        <span className="text-stone-600">{tableAccessInfo?.zone_name || 'Khu vực chính'}</span>
-        <span className="text-emerald-400">•</span>
-        <span className="inline-flex items-center gap-1 font-semibold text-emerald-900">
-          <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-          </svg>
-          Phiên phục vụ đang mở
-        </span>
-        {tableAccessInfo?.customer_name && (
-          <>
-            <span className="text-emerald-400">•</span>
-            <span className="text-stone-700">
-              Chào mừng <strong>{tableAccessInfo.customer_name}</strong>
-            </span>
-          </>
-        )}
-      
-
-      {/* Thanh header điều hướng tại bàn */}
-      
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center gap-2 group">
-              <span className="w-8 h-8 rounded-xl bg-[#14532D] text-white font-serif font-bold flex items-center justify-center text-sm shadow-xs group-hover:bg-[#0F4C3A] transition-colors">
-                S
+      {isStaffMenuPreview ? (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 text-xs text-amber-900">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 font-bold text-[11px]">
+                Không hoạt động · {tableAccessInfo?.status}
               </span>
-              <div className="hidden sm:block">
-                <span className="font-serif font-bold text-[#1C1917] text-base leading-none block">
-                  SmaRes
-                </span>
-                <span className="text-[10px] tracking-wider uppercase text-[#14532D] font-semibold">
-                  Gastronomy
-                </span>
-              </div>
-            </Link>
-
-            <span className="h-5 w-px bg-[#EBE7DF] hidden sm:block" />
-
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F0FDF4] border border-[#BBF7D0] text-[#14532D] shadow-2xs">
-              <svg className="w-3.5 h-3.5 text-[#14532D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-              </svg>
-              <span className="text-xs font-bold tracking-tight">
-                Bàn số {currentTableNumber}
+              <span>
+                Đang xem thực đơn <strong>Bàn {currentTableNumber}</strong> (Staff/Admin). Khách quét QR lúc này sẽ thấy màn hình khóa cho đến khi mở bàn.
               </span>
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse ml-0.5" />
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Link
+                href="/staff/tables"
+                className="px-3 py-1 rounded-lg bg-[#14532d] hover:bg-[#15803d] text-white font-semibold text-[11px] transition-colors"
+              >
+                Mở bàn ngay
+              </Link>
+              <Link
+                href="/staff/qr"
+                className="px-3 py-1 rounded-lg bg-white hover:bg-amber-100 text-[#92400e] border border-amber-300 font-semibold text-[11px] transition-colors"
+              >
+                ← Mã QR bàn
+              </Link>
             </div>
           </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setIsCallWaiterOpen(true)}
-              className="px-3 sm:px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer bg-[#FFFBEB] hover:bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A] shadow-2xs active:scale-95"
-            >
-              <svg className="w-3.5 h-3.5 text-[#D97706]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+        </div>
+      ) : (
+        <div className="bg-emerald-50/90 border-b border-emerald-200 px-4 py-2 text-xs">
+          <div className="max-w-7xl mx-auto flex items-center justify-center flex-wrap gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="font-bold tracking-tight text-[#14532D]">
+              Bàn số {currentTableNumber}
+            </span>
+            <span className="text-emerald-400">•</span>
+            <span className="text-stone-600">{tableAccessInfo?.zone_name || 'Khu vực chính'}</span>
+            <span className="text-emerald-400">•</span>
+            <span className="inline-flex items-center gap-1 font-semibold text-emerald-900">
+              <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
               </svg>
-              <span>Gọi nhân viên</span>
-            </button>
-
-            <Link
-              href="/cart"
-              className="relative p-2 rounded-full text-stone-600 hover:text-[#14532D] hover:bg-[#F5F2EB] transition-colors"
-              aria-label="Giỏ hàng"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-              </svg>
-              {totalItems > 0 && (
-                <span className="absolute -top-1 -right-1 bg-[#14532D] text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center shadow-xs">
-                  {totalItems}
+              Phiên phục vụ đang mở · Đặt món không cần đăng nhập
+            </span>
+            {tableAccessInfo?.customer_name && (
+              <>
+                <span className="text-emerald-400">•</span>
+                <span className="text-stone-700">
+                  Chào mừng <strong>{tableAccessInfo.customer_name}</strong>
                 </span>
-              )}
-            </Link>
+              </>
+            )}
           </div>
         </div>
+      )}
       
 
       {/* Khối tìm kiếm câu lệnh tự nhiên & Prompt Chips */}
@@ -881,7 +883,7 @@ function TableMenuContent() {
             </div>
 
             <Link
-              href="/cart"
+              href={`/cart?table=${encodeURIComponent(currentTableNumber)}`}
               className="bg-[#14532D] hover:bg-[#0F4C3A] text-white px-5 sm:px-6 py-2.5 rounded-full text-xs sm:text-sm font-bold shadow-md transition-all flex items-center gap-2 group active:scale-95"
             >
               <span>Xem giỏ &amp; Đặt món</span>

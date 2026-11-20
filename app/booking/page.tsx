@@ -3,6 +3,18 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import BookingStepper from '@/components/BookingStepper';
+import WheelTimePicker, {
+  isSlotDisabledForDate,
+  resolveNearestValidSlot,
+} from '@/components/booking/WheelTimePicker';
+import {
+  getOperatingHoursForDate,
+  isWithinOperatingHoursForDate,
+} from '@/app/lib/reservationHelpers';
+import {
+  readActiveTableLock,
+  releaseClientTableLock,
+} from '@/app/lib/bookingLockClient';
 import { useCart, type BookingInfo } from '@/app/context/CartContext';
 import { useToast } from '@/components/ui/Toast';
 
@@ -21,17 +33,6 @@ interface BookingFormState {
   guests: number;
   note: string;
 }
-
-const TIME_SLOTS = [
-  { value: '11:30', label: '11:30 (Trưa)' },
-  { value: '12:00', label: '12:00 (Trưa)' },
-  { value: '12:30', label: '12:30 (Trưa)' },
-  { value: '18:00', label: '18:00 (Tối)' },
-  { value: '18:30', label: '18:30 (Tối)' },
-  { value: '19:00', label: '19:00 (Tối)' },
-  { value: '19:30', label: '19:30 (Tối)' },
-  { value: '20:00', label: '20:00 (Tối)' },
-] as const;
 
 const GUEST_OPTIONS = [
   { value: 2, label: '2 người (Cặp đôi / Bạn bè)' },
@@ -92,12 +93,15 @@ function buildInitialFormState(
       ? bookingInfo.date
       : defaultDateStr;
 
+  const preferredTime = bookingInfo?.time || '19:00';
+  const resolvedTime = resolveNearestValidSlot(draftDate, preferredTime) || preferredTime;
+
   return {
     name: bookingInfo?.name || storedUser.name || '',
     phone: bookingInfo?.phone || storedUser.phone || '',
     email: bookingInfo?.email || storedUser.email || '',
     date: draftDate,
-    time: bookingInfo?.time || '19:00',
+    time: resolvedTime,
     guests: normalizeGuests(bookingInfo?.guests),
     note: bookingInfo?.note || '',
   };
@@ -129,8 +133,17 @@ function BookingStepOneForm({
       if (name === 'guests') {
         return { ...prev, guests: normalizeGuests(value) };
       }
+      if (name === 'date') {
+        const nextTime = resolveNearestValidSlot(value, prev.time);
+        return { ...prev, date: value, time: nextTime };
+      }
       return { ...prev, [name]: value };
     });
+    if (errorMsg) setErrorMsg('');
+  };
+
+  const handleTimeChange = (nextTime: string) => {
+    setFormData((prev) => ({ ...prev, time: nextTime }));
     if (errorMsg) setErrorMsg('');
   };
 
@@ -160,8 +173,15 @@ function BookingStepOneForm({
       setErrorMsg('Không thể chọn ngày trong quá khứ (theo giờ Việt Nam +07:00).');
       return;
     }
-    if (!formData.time) {
-      setErrorMsg('Vui lòng chọn khung giờ đến.');
+    if (!formData.time || !isWithinOperatingHoursForDate(formData.date, formData.time)) {
+      const hours = getOperatingHoursForDate(formData.date);
+      setErrorMsg(
+        `Khung giờ không nằm trong giờ mở cửa: ${hours.label}. Vui lòng chọn giờ phù hợp (bước 15 phút).`
+      );
+      return;
+    }
+    if (isSlotDisabledForDate(formData.date, formData.time)) {
+      setErrorMsg('Vui lòng đặt bàn trước giờ hẹn tối thiểu 30 phút (BR-RES-13).');
       return;
     }
     if (!Number.isInteger(normalizedGuests) || normalizedGuests < 1) {
@@ -247,26 +267,19 @@ function BookingStepOneForm({
         />
       </div>
 
-      <div>
+      <div className="md:col-span-2">
         <label htmlFor="booking-time" className="block text-sm font-semibold text-stone-800 mb-2">
           Giờ đến *
         </label>
-        <select
+        <WheelTimePicker
           id="booking-time"
-          name="time"
+          selectedDate={formData.date}
           value={formData.time}
-          onChange={handleFieldChange}
-          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#155e42] focus:border-[#155e42] outline-none transition-all text-stone-800 bg-white"
-        >
-          {TIME_SLOTS.map((slot) => (
-            <option key={slot.value} value={slot.value}>
-              {slot.label}
-            </option>
-          ))}
-        </select>
+          onChange={handleTimeChange}
+        />
       </div>
 
-      <div>
+      <div className="md:col-span-2">
         <label htmlFor="booking-guests" className="block text-sm font-semibold text-stone-800 mb-2">
           Số lượng khách *
         </label>
@@ -341,7 +354,16 @@ export default function BookingPage() {
   const todayStr = getVietnamDateString(0);
   const tomorrowStr = getVietnamDateString(1);
 
-  const handleSaveDraft = (nextData: BookingFormState) => {
+  const handleSaveDraft = async (nextData: BookingFormState) => {
+    const activeLock = readActiveTableLock();
+    const slotChanged =
+      activeLock !== null &&
+      (activeLock.date !== nextData.date || activeLock.time !== nextData.time);
+
+    if (slotChanged && activeLock) {
+      await releaseClientTableLock(activeLock, 'USER_CANCELLED');
+    }
+
     setBookingInfo((prev) => ({
       ...prev,
       name: nextData.name,
@@ -351,6 +373,14 @@ export default function BookingPage() {
       time: nextData.time,
       guests: nextData.guests,
       note: nextData.note,
+      ...(slotChanged
+        ? {
+            tableId: undefined,
+            tableNumber: undefined,
+            tableType: undefined,
+            tableCapacity: undefined,
+          }
+        : {}),
     }));
     showToast('Đã lưu thông tin đặt bàn! Đang chuyển sang chọn vị trí bàn.', 'success');
     router.push('/booking/diagram');
@@ -454,7 +484,9 @@ export default function BookingPage() {
                     <polyline points="12 6 12 12 16 14" />
                   </svg>
                 </span>
-                <span>Giờ mở cửa: 09:00 AM - 23:00 PM</span>
+                <span>
+                  T2–T6: 10:00 – 22:30 • T7–CN: 09:00 – 23:00
+                </span>
               </li>
             </ul>
           </div>

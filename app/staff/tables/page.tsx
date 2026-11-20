@@ -8,6 +8,7 @@ import {
   type TableStatusValue,
   canTransitionTableStatus,
 } from '@/app/lib/tableStateMachine';
+import { formatCountdownHhMmSs, formatVietnamTimeHm } from '@/app/lib/format';
 import { useToast } from '@/components/ui/Toast';
 
 type TableFilter = 'ALL' | TableStatusValue;
@@ -20,11 +21,15 @@ interface ReservationSummary {
   phone: string;
   date: string;
   time: string;
+  startTime?: string | null;
+  endTime?: string | null;
   guests: number;
   note: string;
   status: string;
   checkInTime?: string | null;
 }
+
+type TableCleaningTypeValue = 'EARLY_BONUS' | 'URGENT_15M' | 'RELAXED_30M';
 
 interface StaffTableItem {
   _id: string;
@@ -34,7 +39,16 @@ interface StaffTableItem {
   status: TableStatusValue;
   qrToken: string | null;
   activeReservation: ReservationSummary | null;
+  nextReservation?: ReservationSummary | null;
   reservations: ReservationSummary[];
+  startTime?: string | null;
+  endTime?: string | null;
+  diningStartAt?: string | null;
+  diningEndAt?: string | null;
+  graceExpiresAt?: string | null;
+  cleaningStartedAt?: string | null;
+  cleaningDeadlineAt?: string | null;
+  cleaningType?: TableCleaningTypeValue | null;
   updatedAt?: string | null;
 }
 
@@ -161,8 +175,17 @@ export default function StaffTablesPage() {
   const [walkInNamesByTable, setWalkInNamesByTable] = useState<Record<string, string>>({});
   const [checkInModal, setCheckInModal] = useState<CheckInModalState | null>(null);
   const [reloadNonce, setReloadNonce] = useState<number>(0);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
   const { showToast } = useToast();
+
+  // Ticker 1 giây dùng chung cho đồng hồ đếm ngược HH:mm:ss trên tất cả thẻ bàn
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -439,6 +462,20 @@ export default function StaffTablesPage() {
 
         <div className="flex flex-wrap items-center gap-2.5">
           <Link
+            href="/staff/qr"
+            className="min-h-[42px] px-4 py-2 bg-[#fffbeb] hover:bg-[#fef3c7] text-[#92400e] border border-[#fde68a] rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition-colors"
+          >
+            <svg className="w-4 h-4 text-[#d97706]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <rect x="3" y="3" width="7" height="7" />
+              <rect x="14" y="3" width="7" height="7" />
+              <rect x="3" y="14" width="7" height="7" />
+              <path d="M14 14h3v3h-3z" />
+              <path d="M17 17h4v4" />
+            </svg>
+            <span>Mã QR các bàn</span>
+          </Link>
+
+          <Link
             href="/staff/orders"
             className="min-h-[42px] px-4 py-2 bg-white hover:bg-[#f5f2eb] text-[#1c1917] border border-[#d6d0c4] rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition-colors"
           >
@@ -618,8 +655,44 @@ export default function StaffTablesPage() {
             const allowedTransitions = ALLOWED_TABLE_TRANSITIONS[table.status];
             const isMutating = mutatingIds.includes(table._id);
             const activeRes = table.activeReservation;
+            const nextRes = table.nextReservation ?? null;
             const walkInName = walkInNamesByTable[table._id];
             const tableMenuHref = buildTableMenuPath(table);
+
+            const diningEndMs = table.diningEndAt ? Date.parse(table.diningEndAt) : Number.NaN;
+            const hasDiningEnd = table.status === TABLE_STATUS.SEATED && Number.isFinite(diningEndMs);
+            const diningRemainingSec = hasDiningEnd
+              ? Math.ceil((diningEndMs - nowMs) / 1000)
+              : 0;
+            const diningOverdueSec = hasDiningEnd && diningRemainingSec <= 0
+              ? Math.max(0, Math.floor((nowMs - diningEndMs) / 1000))
+              : 0;
+            const diningEndHm = hasDiningEnd ? formatVietnamTimeHm(diningEndMs) : '';
+            const isUrgentCheckoutRequired = Boolean(
+              hasDiningEnd && diningRemainingSec <= 0 && nextRes && diningOverdueSec >= 900
+            );
+
+            const reservedStartMs = table.startTime ? Date.parse(table.startTime) : Number.NaN;
+            const graceEndMs = table.graceExpiresAt ? Date.parse(table.graceExpiresAt) : Number.NaN;
+            const hasReservedTiming =
+              table.status === TABLE_STATUS.RESERVED &&
+              Number.isFinite(reservedStartMs) &&
+              Number.isFinite(graceEndMs);
+
+            const cleaningDeadlineMs = table.cleaningDeadlineAt
+              ? Date.parse(table.cleaningDeadlineAt)
+              : Number.NaN;
+            const hasCleaningTimer =
+              table.status === TABLE_STATUS.CLEANING && Number.isFinite(cleaningDeadlineMs);
+            const cleaningRemainingSec = hasCleaningTimer
+              ? Math.ceil((cleaningDeadlineMs - nowMs) / 1000)
+              : 0;
+            const cleaningOverdueSec = hasCleaningTimer && cleaningRemainingSec <= 0
+              ? Math.max(0, Math.floor((nowMs - cleaningDeadlineMs) / 1000))
+              : 0;
+            const cleaningDeadlineHm = hasCleaningTimer
+              ? formatVietnamTimeHm(cleaningDeadlineMs)
+              : '';
 
             return (
               <article
@@ -719,7 +792,150 @@ export default function StaffTablesPage() {
                 </div>
 
                 {/* Hành động chuyển trạng thái theo ALLOWED_TABLE_TRANSITIONS */}
-                <div className="pt-3 border-t border-[#ebe7df] space-y-2">
+                <div className="pt-3 border-t border-[#ebe7df] space-y-2.5">
+                  {/* Đồng hồ đếm ngược 150 phút dùng bữa (BR-RES-11) cho bàn SEATED */}
+                  {hasDiningEnd && (
+                    <div
+                      className={`rounded-xl border px-3 py-2.5 flex items-center justify-between gap-2 ${
+                        diningRemainingSec <= 0
+                          ? nextRes
+                            ? diningOverdueSec >= 900
+                              ? 'bg-red-100 border-red-400 text-red-900 animate-pulse'
+                              : 'bg-red-50 border-red-300 text-red-800'
+                            : 'bg-[#fffbeb] border-[#fde68a] text-[#92400e]'
+                          : diningRemainingSec <= 1800
+                            ? 'bg-[#fffbeb] border-[#fde68a] text-[#92400e]'
+                            : 'bg-[#f0fdf4] border-[#bbf7d0] text-[#14532d]'
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[11px] font-bold leading-snug">
+                            {diningRemainingSec <= 0
+                              ? nextRes
+                                ? diningOverdueSec >= 900
+                                  ? 'BẮT BUỘC TRẢ & DỌN BÀN NGAY (Đã trễ >= 15p)'
+                                  : `Quá giờ trả bàn · Có khách sau lúc ${nextRes.time}`
+                                : 'Đã dùng bữa quá 150p · Chưa có lịch sau, có thể phục vụ thêm'
+                              : diningRemainingSec <= 1800
+                                ? 'Sắp hết giờ dùng bữa'
+                                : 'Thời gian dùng bữa (150p)'}
+                          </span>
+                        </div>
+                        <p className="text-[10px] opacity-85 mt-0.5">
+                          {diningRemainingSec <= 0
+                            ? nextRes
+                              ? `Khách kế tiếp: ${nextRes.customerName} (${nextRes.time}) • Quá hạn từ ${diningEndHm}`
+                              : `Mốc 150p lúc: ${diningEndHm}`
+                            : `Trả bàn dự kiến: ${diningEndHm}${nextRes ? ` • Khách sau: ${nextRes.time}` : ''}`}
+                        </p>
+                      </div>
+                      <span
+                        className={`font-mono font-bold text-xs sm:text-sm px-2.5 py-1 rounded-lg border shrink-0 ${
+                          diningRemainingSec <= 0
+                            ? nextRes
+                              ? 'bg-white text-red-700 border-red-300'
+                              : 'bg-white text-[#b45309] border-[#fde68a]'
+                            : diningRemainingSec <= 1800
+                              ? 'bg-white text-[#b45309] border-[#fde68a]'
+                              : 'bg-white text-[#14532d] border-[#86efac]'
+                        }`}
+                      >
+                        {diningRemainingSec <= 0
+                          ? `+${formatCountdownHhMmSs(diningOverdueSec)}`
+                          : formatCountdownHhMmSs(diningRemainingSec)}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Đồng hồ đếm giờ dọn bàn (CLEANING) lưu bền vững theo cleaningDeadlineAt */}
+                  {hasCleaningTimer && (
+                    <div
+                      className={`rounded-xl border px-3 py-2.5 flex items-center justify-between gap-2 ${
+                        cleaningRemainingSec <= 0
+                          ? 'bg-red-50 border-red-300 text-red-800 animate-pulse'
+                          : table.cleaningType === 'URGENT_15M'
+                            ? 'bg-red-50 border-red-300 text-red-800'
+                            : table.cleaningType === 'EARLY_BONUS'
+                              ? 'bg-[#f0fdf4] border-[#bbf7d0] text-[#14532d]'
+                              : 'bg-[#fffbeb] border-[#fde68a] text-[#92400e]'
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold leading-snug">
+                          {cleaningRemainingSec <= 0
+                            ? 'Quá giờ dọn bàn dự kiến'
+                            : table.cleaningType === 'URGENT_15M'
+                              ? 'Dọn bàn khẩn cấp (15p)'
+                              : table.cleaningType === 'EARLY_BONUS'
+                                ? 'Đang dọn bàn (30p + thời gian sớm)'
+                                : 'Đang dọn bàn (30p)'}
+                        </p>
+                        <p className="text-[10px] opacity-85 mt-0.5">
+                          {nextRes
+                            ? `Khách kế tiếp: ${nextRes.customerName} (${nextRes.time}) • Hạn dọn: ${cleaningDeadlineHm}`
+                            : `Hoàn tất dọn dự kiến: ${cleaningDeadlineHm}`}
+                        </p>
+                      </div>
+                      <span
+                        className={`font-mono font-bold text-xs sm:text-sm px-2.5 py-1 rounded-lg border shrink-0 ${
+                          cleaningRemainingSec <= 0 || table.cleaningType === 'URGENT_15M'
+                            ? 'bg-white text-red-700 border-red-300'
+                            : table.cleaningType === 'EARLY_BONUS'
+                              ? 'bg-white text-[#14532d] border-[#86efac]'
+                              : 'bg-white text-[#b45309] border-[#fde68a]'
+                        }`}
+                      >
+                        {cleaningRemainingSec <= 0
+                          ? `+${formatCountdownHhMmSs(cleaningOverdueSec)}`
+                          : formatCountdownHhMmSs(cleaningRemainingSec)}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Đồng hồ đếm ngược giờ hẹn / giữ chỗ 15 phút (BR-RES-09) cho bàn RESERVED */}
+                  {hasReservedTiming && (
+                    <div
+                      className={`rounded-xl border px-3 py-2.5 flex items-center justify-between gap-2 ${
+                        nowMs > graceEndMs
+                          ? 'bg-red-50 border-red-300 text-red-800'
+                          : nowMs >= reservedStartMs
+                            ? 'bg-[#fffbeb] border-[#fde68a] text-[#92400e]'
+                            : 'bg-[#faf8f5] border-[#ebe7df] text-[#14532d]'
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold leading-snug">
+                          {nowMs > graceEndMs
+                            ? 'Quá hạn giữ chỗ 15 phút (No-show)'
+                            : nowMs >= reservedStartMs
+                              ? 'Đang giữ chỗ 15p (BR-RES-09)'
+                              : 'Đếm ngược tới giờ hẹn'}
+                        </p>
+                        <p className="text-[10px] opacity-85 mt-0.5">
+                          {nowMs > graceEndMs
+                            ? 'Khách chưa check-in — có thể Nhả bàn'
+                            : `Giờ hẹn: ${formatVietnamTimeHm(reservedStartMs)} • Hạn giữ: ${formatVietnamTimeHm(graceEndMs)}`}
+                        </p>
+                      </div>
+                      <span
+                        className={`font-mono font-bold text-xs sm:text-sm px-2.5 py-1 rounded-lg border shrink-0 ${
+                          nowMs > graceEndMs
+                            ? 'bg-white text-red-700 border-red-300'
+                            : nowMs >= reservedStartMs
+                              ? 'bg-white text-[#b45309] border-[#fde68a]'
+                              : 'bg-white text-[#14532d] border-[#bbf7d0]'
+                        }`}
+                      >
+                        {nowMs > graceEndMs
+                          ? `+${formatCountdownHhMmSs(Math.floor((nowMs - graceEndMs) / 1000))}`
+                          : nowMs >= reservedStartMs
+                            ? formatCountdownHhMmSs(Math.ceil((graceEndMs - nowMs) / 1000))
+                            : formatCountdownHhMmSs(Math.ceil((reservedStartMs - nowMs) / 1000))}
+                      </span>
+                    </div>
+                  )}
+
                   {table.status === TABLE_STATUS.SEATED && (
                     <div className="flex items-center gap-2">
                       <Link
@@ -810,7 +1026,11 @@ export default function StaffTablesPage() {
                             nextStatus: TABLE_STATUS.CLEANING,
                           })
                         }
-                        className="w-full min-h-[42px] px-4 py-2 rounded-xl bg-[#d97706] hover:bg-[#b45309] text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-60"
+                        className={`w-full min-h-[42px] px-4 py-2 rounded-xl text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-60 ${
+                          isUrgentCheckoutRequired
+                            ? 'bg-red-600 hover:bg-red-700 ring-2 ring-red-300 shadow-md animate-pulse'
+                            : 'bg-[#d97706] hover:bg-[#b45309]'
+                        }`}
                       >
                         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                           <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />

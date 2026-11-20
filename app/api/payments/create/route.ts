@@ -13,7 +13,7 @@ import {
 import {
   calculateDepositAmount,
   computeVerifiedPreOrderTotal,
-  type PreOrderItemInput,
+  parsePreOrderItems,
 } from '@/app/lib/payments/depositCalculator';
 import { createVnpayPaymentUrl } from '@/app/lib/payments/vnpay';
 import { createMomoPayment } from '@/app/lib/payments/momo';
@@ -28,23 +28,6 @@ import Transaction, {
 } from '@/app/models/Transaction';
 
 export const dynamic = 'force-dynamic';
-
-function parsePreOrderItems(raw: unknown): PreOrderItemInput[] {
-  if (!Array.isArray(raw)) {
-    return [];
-  }
-  const items: PreOrderItemInput[] = [];
-  for (const entry of raw) {
-    if (typeof entry !== 'object' || entry === null) continue;
-    const record = entry as Record<string, unknown>;
-    const menuItemId = typeof record.menuItemId === 'string' ? record.menuItemId.trim() : '';
-    const quantity = Number(record.quantity);
-    if (menuItemId && Number.isInteger(quantity) && quantity >= 1) {
-      items.push({ menuItemId, quantity });
-    }
-  }
-  return items;
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -317,6 +300,8 @@ export async function POST(request: NextRequest) {
           transactionRef,
           provider,
           amount: depositCalc.amount,
+          baseTableDeposit: depositCalc.baseTableDeposit,
+          preOrderDeposit: depositCalc.preOrderDeposit,
           depositTier: depositCalc.depositTier,
           preOrderTotal: depositCalc.preOrderTotal,
           paymentUrl,

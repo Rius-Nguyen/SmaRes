@@ -1,9 +1,16 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import BookingStepper from '@/components/BookingStepper';
+import LockCountdownBanner from '@/components/booking/LockCountdownBanner';
+import {
+  readActiveTableLock,
+  releaseClientTableLock,
+  type ClientTableLockState,
+} from '@/app/lib/bookingLockClient';
+import { evaluateLateNightDiningNotice } from '@/app/lib/reservationHelpers';
 import { useCart, type CartItem } from '@/app/context/CartContext';
 import { formatMoney } from '@/app/lib/format';
 import { INITIAL_MENU_ITEMS, MenuItemData } from '@/app/lib/menuInitialData';
@@ -23,16 +30,62 @@ export default function BookingMenuPage() {
     totalItems,
     totalPrice,
     bookingInfo,
+    setBookingInfo,
     hasActiveBooking,
     isLoaded,
     hasSpecialItems,
     getSpecialItems,
   } = useCart();
 
+  const [activeLock, setActiveLock] = useState<ClientTableLockState | null>(() =>
+    readActiveTableLock()
+  );
+  const [isReleasingLock, setIsReleasingLock] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>('Tất cả');
   const [menuDishes, setMenuDishes] = useState<MenuItemData[]>(INITIAL_MENU_ITEMS);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [specialDishModal, setSpecialDishModal] = useState<MenuItemData | null>(null);
+
+  const bookingDate = bookingInfo?.date ?? '';
+  const bookingTime = bookingInfo?.time ?? '';
+  const lateNotice = useMemo(() => {
+    if (!bookingDate || !bookingTime) return null;
+    const notice = evaluateLateNightDiningNotice(bookingDate, bookingTime);
+    return notice.severity !== 'NONE' ? notice : null;
+  }, [bookingDate, bookingTime]);
+
+  const handleLockEnd = useCallback(
+    async (lock: ClientTableLockState, reason: 'USER_CANCELLED' | 'EXPIRED') => {
+      setIsReleasingLock(true);
+      try {
+        await releaseClientTableLock(lock, reason);
+        setActiveLock(null);
+        setBookingInfo((prev) =>
+          prev
+            ? {
+                ...prev,
+                tableId: undefined,
+                tableNumber: undefined,
+                tableType: undefined,
+                tableCapacity: undefined,
+              }
+            : null
+        );
+        if (reason === 'EXPIRED') {
+          showToast(
+            `Thời gian giữ khóa Bàn ${lock.tableNumber} đã hết hạn. Vui lòng chọn lại bàn trên sơ đồ.`,
+            'warning'
+          );
+        } else {
+          showToast(`Đã hủy giữ khóa Bàn ${lock.tableNumber}.`, 'info');
+        }
+        router.push('/booking/diagram');
+      } finally {
+        setIsReleasingLock(false);
+      }
+    },
+    [setBookingInfo, showToast, router]
+  );
 
   useEffect(() => {
     let isCancelled = false;
@@ -204,6 +257,55 @@ export default function BookingMenuPage() {
           </div>
         </div>
       </div>
+
+      {/* Thanh đếm ngược giữ khóa bàn đồng bộ từ Bước 2 */}
+      {activeLock && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-5 w-full">
+          <LockCountdownBanner
+            lock={activeLock}
+            isReleasing={isReleasingLock}
+            onExpired={(expired) => void handleLockEnd(expired, 'EXPIRED')}
+            onRelease={(lock) => void handleLockEnd(lock, 'USER_CANCELLED')}
+          />
+        </div>
+      )}
+
+      {/* Ý tưởng 3: Gợi ý đặt món trước cho khung giờ muộn */}
+      {lateNotice && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 w-full">
+          <div
+            role="note"
+            className={`rounded-2xl border px-4 py-3.5 flex items-start gap-3 text-xs sm:text-sm ${
+              lateNotice.severity === 'LAST_CALL'
+                ? 'bg-[#FFF7ED] border-[#FDBA74] text-[#9A3412]'
+                : 'bg-[#FFFBEB] border-[#FDE68A] text-[#92400E]'
+            }`}
+          >
+            <svg
+              className={`w-5 h-5 shrink-0 mt-0.5 ${
+                lateNotice.severity === 'LAST_CALL' ? 'text-[#EA580C]' : 'text-[#D97706]'
+              }`}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+            <div>
+              <p className="font-bold">
+                Khung giờ muộn ({bookingTime} – {lateNotice.effectiveEndHm} • Đóng cửa{' '}
+                {lateNotice.closingTimeLabel}) — Còn {lateNotice.remainingMinutes} phút phục vụ
+              </p>
+              <p className="mt-0.5 leading-relaxed opacity-95">
+                Bếp nhận gọi món lượt cuối trước khi đóng cửa 30 phút. Khuyến khích quý khách chọn món trước ngay tại đây để bếp chuẩn bị sẵn và lên món tức thì khi bạn ngồi vào bàn!
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Ghi chú đặc quyền đặt trước */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">

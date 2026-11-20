@@ -1,5 +1,12 @@
 import crypto from 'node:crypto';
 import { Types } from 'mongoose';
+import {
+  computeSlotBlockInterval,
+  doDateIntervalsOverlap,
+  doTimeSlotsOverlap,
+  extendEndTimeWithCleaningBuffer,
+  isSlotBeforeMinAdvance,
+} from '@/app/lib/reservationHelpers';
 import TableLock, {
   TABLE_LOCK_TTL_SECONDS,
   TableLockReleaseReason,
@@ -37,7 +44,10 @@ export interface AcquireTableLockInput {
   now?: Date;
 }
 
-export type TableLockConflictReason = 'TABLE_LOCKED' | 'ALREADY_RESERVED';
+export type TableLockConflictReason =
+  | 'TABLE_LOCKED'
+  | 'ALREADY_RESERVED'
+  | 'BOOKING_LEAD_TIME_TOO_SHORT';
 
 export type AcquireTableLockResult =
   | {
@@ -274,42 +284,103 @@ export async function acquireTableLock(
   const sessionId = input.sessionId?.trim() || generateLockSessionId();
   const normalizedTableNumber = (input.tableNumber ?? '').trim().toUpperCase();
 
-  // 1. Dọn khóa & giữ chỗ đã quá hạn trên chính slot này trước khi kiểm tra
+  // BR-RES-13: Kiểm tra đặt bàn trước tối thiểu 30 phút (áp dụng cho lượt khóa mới chưa gắn đơn)
+  if (
+    !input.reservationId &&
+    isSlotBeforeMinAdvance(input.date, input.time, now.getTime())
+  ) {
+    return {
+      acquired: false,
+      conflictReason: 'BOOKING_LEAD_TIME_TOO_SHORT',
+      lockedUntil: null,
+      message: 'Vui lòng đặt bàn trước giờ hẹn tối thiểu 30 phút (BR-RES-13).',
+    };
+  }
+
+  // 1. Dọn khóa & giữ chỗ đã quá hạn trên chính bàn và ngày này (bao gồm các khung giờ chồng lấn)
   await releaseExpiredLocksAndHolds({
     tableId: input.tableId,
     date: input.date,
-    time: input.time,
     now,
   });
 
-  // 2. Kiểm tra slot đã có đơn đặt bàn hợp lệ (khác chính reservationId đang thanh toán) chưa
+  // 2. Kiểm tra bàn đã có đơn đặt bàn hợp lệ trùng khoảng 180 phút (150p dùng bữa + 30p dọn bàn)
   const validReservationId =
     input.reservationId && Types.ObjectId.isValid(input.reservationId)
       ? input.reservationId
       : null;
 
+  const newBlockInterval = computeSlotBlockInterval(input.date, input.time);
+
   const reservationQuery: Record<string, unknown> = {
     tableId: input.tableId,
     date: input.date,
-    time: input.time,
-    status: { $ne: ReservationStatus.CANCELLED },
+    status: { $in: [ReservationStatus.CONFIRMED, ReservationStatus.CHECKED_IN] },
   };
   if (validReservationId) {
     reservationQuery._id = { $ne: new Types.ObjectId(validReservationId) };
   }
 
-  const existingReservation = await Reservation.findOne(reservationQuery)
-    .select('_id paymentStatus')
+  const sameDayReservations = await Reservation.find(reservationQuery)
+    .select('_id time startTime endTime paymentStatus')
     .lean();
 
-  if (existingReservation) {
+  const conflictingReservation = sameDayReservations.find((res) => {
+    if (newBlockInterval && res.startTime && res.endTime) {
+      const resBlockedEnd = extendEndTimeWithCleaningBuffer(res.endTime) ?? res.endTime;
+      return doDateIntervalsOverlap(
+        newBlockInterval.startTime,
+        newBlockInterval.endTime,
+        res.startTime,
+        resBlockedEnd
+      );
+    }
+    return !res.time || doTimeSlotsOverlap(res.time, input.time);
+  });
+
+  if (conflictingReservation) {
     return {
       acquired: false,
       conflictReason: 'ALREADY_RESERVED',
       lockedUntil: null,
-      message: 'Bàn này đã có người đặt vào khung giờ đã chọn!',
+      message:
+        'Bàn này đã có người đặt trong khung giờ trùng lặp (150 phút dùng bữa + 30 phút dọn bàn = 3 giờ)!',
     };
   }
+
+  // 2b. Kiểm tra khóa bàn còn hiệu lực của phiên khác bị chồng lấn khoảng 180 phút trên cùng bàn & ngày
+  const activeOtherLocks = await TableLock.find({
+    tableId: input.tableId,
+    date: input.date,
+    expiresAt: { $gt: now },
+    sessionId: { $ne: sessionId },
+  })
+    .select('_id time expiresAt')
+    .lean();
+
+  const overlappingOtherLock = activeOtherLocks.find(
+    (lock) => !lock.time || doTimeSlotsOverlap(lock.time, input.time)
+  );
+
+  if (overlappingOtherLock) {
+    return {
+      acquired: false,
+      conflictReason: 'TABLE_LOCKED',
+      lockedUntil:
+        overlappingOtherLock.expiresAt instanceof Date
+          ? overlappingOtherLock.expiresAt
+          : new Date(overlappingOtherLock.expiresAt),
+      message:
+        'Bàn này đang được khách hàng khác giữ chỗ trong khung giờ trùng lặp (khung 3 giờ gồm 150 phút dùng bữa + 30 phút dọn bàn). Vui lòng chọn bàn khác hoặc thử lại sau.',
+    };
+  }
+
+  // Đảm bảo mỗi session chỉ giữ tối đa 1 khóa sơ đồ chưa gắn đơn (reservationId: null)
+  await TableLock.deleteMany({
+    sessionId,
+    lockKey: { $ne: lockKey },
+    reservationId: null,
+  });
 
   const lockPayload = {
     tableId: input.tableId,
@@ -325,11 +396,40 @@ export async function acquireTableLock(
     expiresAt,
   };
 
-  // Bước A (Atomic): Nếu lock đã hết hạn hoặc thuộc cùng sessionId -> chiếm lại / gia hạn atomic
+  // Bước A1 (Atomic): Nếu chính sessionId này đang giữ khóa còn hạn -> giữ nguyên expiresAt ban đầu, không reset đồng hồ 10 phút
+  const activeOwnUpdate: Record<string, unknown> = {
+    tableNumber: normalizedTableNumber,
+  };
+  if (lockPayload.userId) {
+    activeOwnUpdate.userId = lockPayload.userId;
+  }
+  if (validReservationId) {
+    activeOwnUpdate.reservationId = new Types.ObjectId(validReservationId);
+  }
+
+  const activeOwnLock = await TableLock.findOneAndUpdate(
+    {
+      lockKey,
+      sessionId,
+      expiresAt: { $gt: now },
+    },
+    { $set: activeOwnUpdate },
+    { returnDocument: 'after' }
+  );
+
+  if (activeOwnLock) {
+    return {
+      acquired: true,
+      renewed: true,
+      lock: serializeLock(activeOwnLock, ttlSeconds),
+    };
+  }
+
+  // Bước A2 (Atomic): Nếu lock trên lockKey đã hết hạn -> chiếm lại với TTL mới 10 phút
   const reclaimed = await TableLock.findOneAndUpdate(
     {
       lockKey,
-      $or: [{ expiresAt: { $lte: now } }, { sessionId }],
+      expiresAt: { $lte: now },
     },
     { $set: lockPayload },
     { returnDocument: 'after' }

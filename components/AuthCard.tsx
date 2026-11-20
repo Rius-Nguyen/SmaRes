@@ -344,7 +344,7 @@ export default function AuthCard({ initialMode = 'login' }: AuthCardProps) {
                       value={loginData.email}
                       onChange={handleLoginChange}
                       required
-                      placeholder="admin@smares.com hoặc admin" 
+                      placeholder="yourname@gmail.com hoặc tên đăng nhập" 
                       className="w-full pl-11 pr-4 py-3 bg-stone-50/60 border border-stone-200 rounded-xl text-stone-900 text-sm sm:text-base placeholder:text-stone-400 focus:outline-none focus:border-emerald-700 focus:ring-4 focus:ring-emerald-700/10 focus:bg-white hover:border-stone-300 transition-all duration-200" 
                     />
                   </div>

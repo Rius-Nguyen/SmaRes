@@ -1,13 +1,33 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 import {
+  BOOKING_MIN_ADVANCE_MINUTES,
   CANCELLATION_MIN_NOTICE_MINUTES,
+  CLEANING_BUFFER_MINUTES,
+  DINING_DURATION_MINUTES,
+  RESERVATION_HOLD_GRACE_MINUTES,
+  SLOT_BLOCK_DURATION_MINUTES,
+  TableCleaningType,
   VIETNAM_DATE_REGEX,
   VIETNAM_TIME_REGEX,
+  computeCleaningSchedule,
+  computeDiningInterval,
+  computeSlotBlockInterval,
+  computeTableTimingMeta,
+  doDateIntervalsOverlap,
+  doTimeSlotsOverlap,
+  evaluateLateNightDiningNotice,
+  extendEndTimeWithCleaningBuffer,
+  getOperatingHoursForDate,
+  isSlotBeforeMinAdvance,
+  isVietnamSlotInPast,
+  isWithinOperatingHoursForDate,
+  parseTimeToMinutes,
   parseVietnamDateTime,
   evaluateCancellationWindow,
   generateBookingCode,
 } from '@/app/lib/reservationHelpers';
+import { formatCountdownHhMmSs, formatVietnamTimeHm } from '@/app/lib/format';
 
 const mocks = vi.hoisted(() => ({
   connectDB: vi.fn<() => Promise<void>>(),
@@ -61,10 +81,10 @@ const VALID_RESERVATION_ID = '6717a01a1e0011a100000201';
 const OWNER_USER_ID = '6717a01a1e0011a100000301';
 const OTHER_USER_ID = '6717a01a1e0011a100000302';
 
-function setupFindOneSelectLean(doc: unknown) {
-  const lean = vi.fn().mockResolvedValue(doc);
+function setupFindSelectLean(docs: unknown[]) {
+  const lean = vi.fn().mockResolvedValue(docs);
   const select = vi.fn().mockReturnValue({ lean });
-  mocks.reservationFindOne.mockReturnValue({ select });
+  mocks.reservationFind.mockReturnValue({ select });
   return { select, lean };
 }
 
@@ -182,6 +202,205 @@ describe('reservationHelpers', () => {
     }
     expect(codes.size).toBeGreaterThan(40);
   });
+
+  it('enforces 180-minute slot block overlap (150m dining + 30m cleaning buffer) and formats HH:mm:ss + staff timing meta', () => {
+    expect(DINING_DURATION_MINUTES).toBe(150);
+    expect(CLEANING_BUFFER_MINUTES).toBe(30);
+    expect(SLOT_BLOCK_DURATION_MINUTES).toBe(180);
+    expect(RESERVATION_HOLD_GRACE_MINUTES).toBe(15);
+    expect(parseTimeToMinutes('19:15')).toBe(1155);
+    expect(Number.isNaN(parseTimeToMinutes('25:00'))).toBe(true);
+
+    // Offsets < 180m overlap (e.g. 19:00 vs 21:30 -> diff 150m < 180m; 19:00 vs 21:45 -> diff 165m < 180m)
+    expect(doTimeSlotsOverlap('19:00', '19:00')).toBe(true);
+    expect(doTimeSlotsOverlap('19:00', '19:15')).toBe(true);
+    expect(doTimeSlotsOverlap('19:00', '21:30')).toBe(true);
+    expect(doTimeSlotsOverlap('19:00', '21:45')).toBe(true);
+    expect(doTimeSlotsOverlap('21:45', '19:00')).toBe(true);
+    expect(doTimeSlotsOverlap('19:00', '16:15')).toBe(true);
+
+    // Exact 180-minute (3-hour) boundary does NOT overlap: [19:00, 22:00) and [22:00, 01:00)
+    expect(doTimeSlotsOverlap('19:00', '22:00')).toBe(false);
+    expect(doTimeSlotsOverlap('19:00', '16:00')).toBe(false);
+
+    // computeDiningInterval (150m) & computeSlotBlockInterval (180m) (+07:00)
+    const diningA = computeDiningInterval('2026-11-20', '19:00');
+    const blockA = computeSlotBlockInterval('2026-11-20', '19:00');
+    const blockB = computeSlotBlockInterval('2026-11-20', '21:45');
+    const blockC = computeSlotBlockInterval('2026-11-20', '22:00');
+    expect(diningA).not.toBeNull();
+    expect(blockA).not.toBeNull();
+    expect(blockB).not.toBeNull();
+    expect(blockC).not.toBeNull();
+    if (diningA && blockA && blockB && blockC) {
+      expect(diningA.endTime.getTime() - diningA.startTime.getTime()).toBe(150 * 60 * 1000);
+      expect(blockA.endTime.getTime() - blockA.startTime.getTime()).toBe(180 * 60 * 1000);
+      expect(extendEndTimeWithCleaningBuffer(diningA.endTime)?.toISOString()).toBe(blockA.endTime.toISOString());
+      expect(formatVietnamTimeHm(diningA.startTime)).toBe('19:00');
+      expect(formatVietnamTimeHm(diningA.endTime)).toBe('21:30');
+      expect(formatVietnamTimeHm(blockA.endTime)).toBe('22:00');
+      expect(doDateIntervalsOverlap(blockA.startTime, blockA.endTime, blockB.startTime, blockB.endTime)).toBe(true);
+      expect(doDateIntervalsOverlap(blockA.startTime, blockA.endTime, blockC.startTime, blockC.endTime)).toBe(false);
+    }
+
+    // formatCountdownHhMmSs formatting
+    expect(formatCountdownHhMmSs(0)).toBe('00:00:00');
+    expect(formatCountdownHhMmSs(-10)).toBe('00:00:00');
+    expect(formatCountdownHhMmSs(599)).toBe('00:09:59');
+    expect(formatCountdownHhMmSs(9000)).toBe('02:30:00');
+    expect(formatCountdownHhMmSs(3661)).toBe('01:01:01');
+
+    // computeTableTimingMeta for SEATED (walk-in & reservation) and RESERVED (grace 15m)
+    const walkInUpdatedAt = new Date('2026-11-20T12:00:00.000Z'); // 19:00 VN
+    const walkInMeta = computeTableTimingMeta({
+      tableStatus: 'SEATED',
+      tableUpdatedAt: walkInUpdatedAt,
+      activeReservation: null,
+    });
+    expect(walkInMeta.diningStartAt).toBe('2026-11-20T12:00:00.000Z');
+    expect(walkInMeta.diningEndAt).toBe('2026-11-20T14:30:00.000Z');
+    expect(walkInMeta.graceExpiresAt).toBeNull();
+
+    const reservedMeta = computeTableTimingMeta({
+      tableStatus: 'RESERVED',
+      activeReservation: { date: '2026-11-20', time: '19:00' },
+    });
+    expect(reservedMeta.startTime).toBe('2026-11-20T12:00:00.000Z');
+    expect(reservedMeta.endTime).toBe('2026-11-20T14:30:00.000Z');
+    expect(reservedMeta.graceExpiresAt).toBe('2026-11-20T12:15:00.000Z');
+    expect(reservedMeta.diningEndAt).toBeNull();
+
+    // Past-slot check in Vietnam GMT+7 & BR-RES-13 (>= 30 minutes lead time)
+    const slotMs = parseVietnamDateTime('2026-12-20', '19:15');
+    expect(BOOKING_MIN_ADVANCE_MINUTES).toBe(30);
+    expect(isVietnamSlotInPast('2026-12-20', '19:15', slotMs - 1000)).toBe(false);
+    expect(isVietnamSlotInPast('2026-12-20', '19:15', slotMs)).toBe(true);
+    expect(isSlotBeforeMinAdvance('2026-12-20', '19:15', slotMs - 29 * 60_000)).toBe(true);
+    expect(isSlotBeforeMinAdvance('2026-12-20', '19:15', slotMs - 30 * 60_000)).toBe(false);
+  });
+
+  it('computes cleaning schedule accurately across EARLY_BONUS, URGENT_15M, and RELAXED_30M branches', () => {
+    const diningEndMs = Date.parse('2026-12-20T14:30:00.000Z'); // 21:30 VN
+
+    // 1a. Returned 20m early (21:10 VN), no next booking -> 30m + 20m = 50m (EARLY_BONUS)
+    const earlyNoNext = computeCleaningSchedule({
+      nowMs: diningEndMs - 20 * 60_000,
+      diningEndMs,
+      hasNextReservation: false,
+    });
+    expect(earlyNoNext.cleaningType).toBe(TableCleaningType.EARLY_BONUS);
+    expect(earlyNoNext.durationMs).toBe(50 * 60_000);
+
+    // 1b. Returned 20m early (21:10 VN), next booking at 21:50 VN -> capped at 21:35 VN (25m)
+    const earlyWithNext = computeCleaningSchedule({
+      nowMs: diningEndMs - 20 * 60_000,
+      diningEndMs,
+      nextReservationStartMs: diningEndMs + 20 * 60_000, // 21:50 VN
+      hasNextReservation: true,
+    });
+    expect(earlyWithNext.cleaningType).toBe(TableCleaningType.EARLY_BONUS);
+    expect(earlyWithNext.durationMs).toBe(25 * 60_000);
+
+    // 2. Returned 10m AFTER 150m end, WITH next booking -> fixed 15m (URGENT_15M)
+    const urgentSchedule = computeCleaningSchedule({
+      nowMs: diningEndMs + 10 * 60_000,
+      diningEndMs,
+      nextReservationStartMs: diningEndMs + 30 * 60_000,
+      hasNextReservation: true,
+    });
+    expect(urgentSchedule.cleaningType).toBe(TableCleaningType.URGENT_15M);
+    expect(urgentSchedule.durationMs).toBe(15 * 60_000);
+
+    // 3. Returned 10m AFTER 150m end, WITHOUT next booking -> relaxed 30m (RELAXED_30M)
+    const relaxedSchedule = computeCleaningSchedule({
+      nowMs: diningEndMs + 10 * 60_000,
+      diningEndMs,
+      hasNextReservation: false,
+    });
+    expect(relaxedSchedule.cleaningType).toBe(TableCleaningType.RELAXED_30M);
+    expect(relaxedSchedule.durationMs).toBe(30 * 60_000);
+  });
+
+  it('enforces operating hours by day of week (Mon–Fri 10:00–22:30, Sat–Sun 09:00–23:00)', () => {
+    // 2026-11-23 is Monday
+    const mondayHours = getOperatingHoursForDate('2026-11-23');
+    expect(mondayHours.isWeekend).toBe(false);
+    expect(mondayHours.openTime).toBe('10:00');
+    expect(mondayHours.closeTime).toBe('22:30');
+    expect(isWithinOperatingHoursForDate('2026-11-23', '09:00')).toBe(false);
+    expect(isWithinOperatingHoursForDate('2026-11-23', '09:45')).toBe(false);
+    expect(isWithinOperatingHoursForDate('2026-11-23', '10:00')).toBe(true);
+    expect(isWithinOperatingHoursForDate('2026-11-23', '22:30')).toBe(true);
+    expect(isWithinOperatingHoursForDate('2026-11-23', '22:45')).toBe(false);
+
+    // 2026-11-21 is Saturday, 2026-11-22 is Sunday
+    const saturdayHours = getOperatingHoursForDate('2026-11-21');
+    expect(saturdayHours.isWeekend).toBe(true);
+    expect(saturdayHours.openTime).toBe('09:00');
+    expect(saturdayHours.closeTime).toBe('23:00');
+    expect(isWithinOperatingHoursForDate('2026-11-21', '09:00')).toBe(true);
+    expect(isWithinOperatingHoursForDate('2026-11-22', '23:00')).toBe(true);
+    expect(isWithinOperatingHoursForDate('2026-11-22', '23:15')).toBe(false);
+  });
+
+  it('evaluates 2-tier late-night dining notices and caps endTime at 00:00 (Mon–Fri) or 01:00 (Sat–Sun)', () => {
+    // Weekday 2026-11-23 (Monday, hard closing 00:00)
+    const weekdayNormal = evaluateLateNightDiningNotice('2026-11-23', '21:30');
+    expect(weekdayNormal.severity).toBe('NONE');
+    expect(weekdayNormal.remainingMinutes).toBe(150);
+    expect(weekdayNormal.closingTimeLabel).toBe('00:00');
+    expect(weekdayNormal.isCappedByClosing).toBe(false);
+
+    const weekdayShort = evaluateLateNightDiningNotice('2026-11-23', '22:00');
+    expect(weekdayShort.severity).toBe('SHORT_DINING');
+    expect(weekdayShort.remainingMinutes).toBe(120);
+    expect(weekdayShort.effectiveEndHm).toBe('00:00');
+    expect(weekdayShort.isCappedByClosing).toBe(true);
+
+    const weekdayLastCall = evaluateLateNightDiningNotice('2026-11-23', '22:30');
+    expect(weekdayLastCall.severity).toBe('LAST_CALL');
+    expect(weekdayLastCall.remainingMinutes).toBe(90);
+    expect(weekdayLastCall.effectiveEndHm).toBe('00:00');
+    expect(weekdayLastCall.isCappedByClosing).toBe(true);
+
+    const weekdayCappedInterval = computeDiningInterval('2026-11-23', '22:30');
+    expect(weekdayCappedInterval).not.toBeNull();
+    if (weekdayCappedInterval) {
+      expect(
+        weekdayCappedInterval.endTime.getTime() - weekdayCappedInterval.startTime.getTime()
+      ).toBe(90 * 60 * 1000);
+      expect(formatVietnamTimeHm(weekdayCappedInterval.endTime)).toBe('00:00');
+    }
+
+    // Weekend 2026-11-21 (Saturday, hard closing 01:00)
+    const weekendFull = evaluateLateNightDiningNotice('2026-11-21', '22:30');
+    expect(weekendFull.severity).toBe('NONE');
+    expect(weekendFull.remainingMinutes).toBe(150);
+    expect(weekendFull.closingTimeLabel).toBe('01:00');
+    expect(weekendFull.effectiveEndHm).toBe('01:00');
+    expect(weekendFull.isCappedByClosing).toBe(false);
+
+    const weekendShort = evaluateLateNightDiningNotice('2026-11-21', '22:45');
+    expect(weekendShort.severity).toBe('SHORT_DINING');
+    expect(weekendShort.remainingMinutes).toBe(135);
+    expect(weekendShort.effectiveEndHm).toBe('01:00');
+    expect(weekendShort.isCappedByClosing).toBe(true);
+
+    const weekendLastCall = evaluateLateNightDiningNotice('2026-11-21', '23:00');
+    expect(weekendLastCall.severity).toBe('LAST_CALL');
+    expect(weekendLastCall.remainingMinutes).toBe(120);
+    expect(weekendLastCall.effectiveEndHm).toBe('01:00');
+    expect(weekendLastCall.isCappedByClosing).toBe(true);
+
+    const weekendCappedInterval = computeDiningInterval('2026-11-21', '23:00');
+    expect(weekendCappedInterval).not.toBeNull();
+    if (weekendCappedInterval) {
+      expect(
+        weekendCappedInterval.endTime.getTime() - weekendCappedInterval.startTime.getTime()
+      ).toBe(120 * 60 * 1000);
+      expect(formatVietnamTimeHm(weekendCappedInterval.endTime)).toBe('01:00');
+    }
+  });
 });
 
 describe('Reservations API route handlers', () => {
@@ -258,20 +477,20 @@ describe('Reservations API route handlers', () => {
       tableNumber: 'B01',
       capacity: 4,
     });
-    setupFindOneSelectLean(null);
+    setupFindSelectLean([]);
     mocks.reservationCreate.mockResolvedValue({
       _id: VALID_RESERVATION_ID,
       bookingCode: 'RES-1A2B3C',
       tableId: VALID_TABLE_ID,
       tableNumber: 'B01',
       customerName: 'Nguyễn Văn A',
-      date: '2026-11-20',
+      date: '2026-12-20',
       time: '19:00',
       guests: 4,
       phone: '0901234567',
       note: 'Gần cửa sổ',
       status: 'CONFIRMED',
-      createdAt: new Date('2026-11-19T12:00:00.000Z'),
+      createdAt: new Date('2026-12-19T12:00:00.000Z'),
     });
 
     const createReq = new NextRequest('http://localhost/api/reservations', {
@@ -279,7 +498,7 @@ describe('Reservations API route handlers', () => {
       body: JSON.stringify({
         tableId: VALID_TABLE_ID,
         customerName: 'Nguyễn Văn A',
-        date: '2026-11-20',
+        date: '2026-12-20',
         time: '19:00',
         guests: 4,
         phone: '0901234567',
@@ -290,7 +509,13 @@ describe('Reservations API route handlers', () => {
     const createRes = await POST(createReq);
     const createBody = (await createRes.json()) as {
       success: boolean;
-      data: { bookingCode: string; status: string; tableNumber: string };
+      data: {
+        bookingCode: string;
+        status: string;
+        tableNumber: string;
+        startTime: string;
+        endTime: string;
+      };
     };
 
     expect(createRes.status).toBe(201);
@@ -298,15 +523,30 @@ describe('Reservations API route handlers', () => {
     expect(createBody.data.bookingCode).toBe('RES-1A2B3C');
     expect(createBody.data.status).toBe('CONFIRMED');
     expect(createBody.data.tableNumber).toBe('B01');
+    expect(createBody.data.startTime).toBe('2026-12-20T12:00:00.000Z');
+    expect(createBody.data.endTime).toBe('2026-12-20T14:30:00.000Z');
+    // Chỉ query các đơn hiệu lực CONFIRMED / CHECKED_IN (bỏ qua COMPLETED và CANCELLED)
+    expect(mocks.reservationFind).toHaveBeenCalledWith({
+      tableId: VALID_TABLE_ID,
+      date: '2026-12-20',
+      status: { $in: ['CONFIRMED', 'CHECKED_IN'] },
+    });
 
-    // Existing non-cancelled reservation for same tableId/date/time -> 409
-    setupFindOneSelectLean({ _id: VALID_RESERVATION_ID });
+    // Existing active reservation at 19:00 (dining ends 21:30, cleaning ends 22:00) overlaps 21:45 -> 409 Conflict
+    setupFindSelectLean([
+      {
+        _id: VALID_RESERVATION_ID,
+        time: '19:00',
+        startTime: new Date('2026-12-20T12:00:00.000Z'),
+        endTime: new Date('2026-12-20T14:30:00.000Z'),
+      },
+    ]);
     const conflictReq = new NextRequest('http://localhost/api/reservations', {
       method: 'POST',
       body: JSON.stringify({
         tableId: VALID_TABLE_ID,
-        date: '2026-11-20',
-        time: '19:00',
+        date: '2026-12-20',
+        time: '21:45',
         guests: 2,
         phone: '0909998888',
       }),
@@ -315,6 +555,75 @@ describe('Reservations API route handlers', () => {
     const conflictRes = await POST(conflictReq);
     expect(conflictRes.status).toBe(409);
     expect(mocks.reservationCreate).toHaveBeenCalledTimes(1);
+
+    // 22:00 (exactly 180m = 150m dining + 30m cleaning after 19:00) does NOT overlap -> 201 Created
+    setupFindSelectLean([
+      {
+        _id: VALID_RESERVATION_ID,
+        time: '19:00',
+        startTime: new Date('2026-12-20T12:00:00.000Z'),
+        endTime: new Date('2026-12-20T14:30:00.000Z'),
+      },
+    ]);
+    const nonOverlapReq = new NextRequest('http://localhost/api/reservations', {
+      method: 'POST',
+      body: JSON.stringify({
+        tableId: VALID_TABLE_ID,
+        date: '2026-12-20',
+        time: '22:00',
+        guests: 2,
+        phone: '0909998888',
+      }),
+    });
+    const nonOverlapRes = await POST(nonOverlapReq);
+    expect(nonOverlapRes.status).toBe(201);
+    expect(mocks.reservationCreate).toHaveBeenCalledTimes(2);
+  });
+
+  it('POST /api/reservations rejects bookings less than 30 minutes in advance (BR-RES-13 -> 400 BOOKING_LEAD_TIME_TOO_SHORT)', async () => {
+    vi.useFakeTimers();
+    // 18:45 VN = 11:45 UTC; booking for 19:00 VN is only 15m ahead (< 30m)
+    vi.setSystemTime(new Date('2026-12-20T11:45:00.000Z'));
+
+    const tooSoonReq = new NextRequest('http://localhost/api/reservations', {
+      method: 'POST',
+      body: JSON.stringify({
+        tableId: VALID_TABLE_ID,
+        date: '2026-12-20',
+        time: '19:00',
+        guests: 2,
+        phone: '0901234567',
+      }),
+    });
+    const tooSoonRes = await POST(tooSoonReq);
+    const tooSoonBody = (await tooSoonRes.json()) as {
+      success: boolean;
+      error?: string;
+      message?: string;
+    };
+
+    expect(tooSoonRes.status).toBe(400);
+    expect(tooSoonBody.success).toBe(false);
+    expect(tooSoonBody.error).toBe('BOOKING_LEAD_TIME_TOO_SHORT');
+
+    // Monday 2026-12-21 at 09:00 is outside Mon–Fri operating hours (10:00–22:30) -> 400 OUTSIDE_OPERATING_HOURS
+    const weekdayEarlyReq = new NextRequest('http://localhost/api/reservations', {
+      method: 'POST',
+      body: JSON.stringify({
+        tableId: VALID_TABLE_ID,
+        date: '2026-12-21',
+        time: '09:00',
+        guests: 2,
+        phone: '0901234567',
+      }),
+    });
+    const weekdayEarlyRes = await POST(weekdayEarlyReq);
+    const weekdayEarlyBody = (await weekdayEarlyRes.json()) as {
+      success: boolean;
+      error?: string;
+    };
+    expect(weekdayEarlyRes.status).toBe(400);
+    expect(weekdayEarlyBody.error).toBe('OUTSIDE_OPERATING_HOURS');
   });
 
   it('POST /api/reservations returns 409 on Mongo duplicate key error (code === 11000) for double booking', async () => {
@@ -323,7 +632,7 @@ describe('Reservations API route handlers', () => {
       tableNumber: 'B02',
       capacity: 6,
     });
-    setupFindOneSelectLean(null);
+    setupFindSelectLean([]);
 
     const mongoDuplicateError = Object.assign(
       new Error('E11000 duplicate key error collection: smares.reservations index: uniq_active_table_slot'),
@@ -338,7 +647,7 @@ describe('Reservations API route handlers', () => {
       method: 'POST',
       body: JSON.stringify({
         tableNumber: 'b02',
-        date: '2026-11-20',
+        date: '2026-12-20',
         time: '19:30',
         guests: 4,
         phone: '0912345678',
@@ -364,7 +673,7 @@ describe('Reservations API route handlers', () => {
       method: 'POST',
       body: JSON.stringify({
         tableId: VALID_TABLE_ID,
-        date: '2026-11-20',
+        date: '2026-12-20',
         time: '19:00',
         guests: 8,
         phone: '0912345678',
@@ -373,7 +682,7 @@ describe('Reservations API route handlers', () => {
     const overCapRes = await POST(overCapReq);
     expect(overCapRes.status).toBe(400);
 
-    setupFindOneSelectLean(null);
+    setupFindSelectLean([]);
     mocks.reservationCreate
       .mockRejectedValueOnce(
         Object.assign(new Error('E11000 duplicate key bookingCode'), {
@@ -387,20 +696,20 @@ describe('Reservations API route handlers', () => {
         tableId: VALID_TABLE_ID,
         tableNumber: 'B01',
         customerName: 'Khách tại bàn',
-        date: '2026-11-20',
+        date: '2026-12-20',
         time: '20:00',
         guests: 2,
         phone: '0912345678',
         note: '',
         status: 'CONFIRMED',
-        createdAt: new Date('2026-11-19T12:00:00.000Z'),
+        createdAt: new Date('2026-12-19T12:00:00.000Z'),
       });
 
     const retryReq = new NextRequest('http://localhost/api/reservations', {
       method: 'POST',
       body: JSON.stringify({
         tableId: VALID_TABLE_ID,
-        date: '2026-11-20',
+        date: '2026-12-20',
         time: '20:00',
         guests: 2,
         phone: '0912345678',

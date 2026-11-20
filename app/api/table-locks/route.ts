@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Types } from 'mongoose';
 import connectDB from '@/app/lib/db';
 import { checkBookingAccess } from '@/app/lib/bookingRoleGuard';
-import { parseVietnamDateTime } from '@/app/lib/reservationHelpers';
+import {
+  getOperatingHoursForDate,
+  isSlotBeforeMinAdvance,
+  isWithinOperatingHoursForDate,
+  parseVietnamDateTime,
+} from '@/app/lib/reservationHelpers';
 import {
   acquireTableLock,
   buildTableLockKey,
@@ -151,6 +156,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!reservationId && !isWithinOperatingHoursForDate(date, time)) {
+      const hours = getOperatingHoursForDate(date);
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Giờ giữ bàn phải nằm trong khung giờ phục vụ ${hours.label}.`,
+          error: 'OUTSIDE_OPERATING_HOURS',
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!reservationId && isSlotBeforeMinAdvance(date, time)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Vui lòng đặt bàn trước giờ hẹn tối thiểu 30 phút (BR-RES-13).',
+          error: 'BOOKING_LEAD_TIME_TOO_SHORT',
+        },
+        { status: 400 }
+      );
+    }
+
     if (tableId && !Types.ObjectId.isValid(tableId)) {
       return NextResponse.json(
         {
@@ -201,6 +229,8 @@ export async function POST(request: NextRequest) {
     });
 
     if (!lockResult.acquired) {
+      const statusCode =
+        lockResult.conflictReason === 'BOOKING_LEAD_TIME_TOO_SHORT' ? 400 : 409;
       return NextResponse.json(
         {
           success: false,
@@ -212,7 +242,7 @@ export async function POST(request: NextRequest) {
               : null,
           },
         },
-        { status: 409 }
+        { status: statusCode }
       );
     }
 

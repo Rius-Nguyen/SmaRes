@@ -179,11 +179,12 @@ describe('TK-129 & TK-130: Distributed Table Lock (TTL 10 phút) & Auto-Release'
     }
   });
 
-  it('idempotently renews the lock when the same sessionId requests again', async () => {
-    const now = new Date('2026-11-20T10:03:00.000Z');
-    const renewedExpiry = new Date(now.getTime() + 600_000);
+  it('preserves original expiresAt (does not reset 10m countdown) when the same sessionId re-acquires/binds reservationId while active', async () => {
+    const step2CreatedAt = new Date('2026-11-20T10:00:00.000Z');
+    const originalExpiry = new Date(step2CreatedAt.getTime() + 600_000);
+    const step4ConfirmAt = new Date('2026-11-20T10:03:00.000Z');
 
-    mocks.tableLockFindOneAndUpdate.mockResolvedValue({
+    mocks.tableLockFindOneAndUpdate.mockResolvedValueOnce({
       _id: LOCK_ID,
       lockKey: SLOT_LOCK_KEY,
       tableId: TABLE_ID,
@@ -191,8 +192,8 @@ describe('TK-129 & TK-130: Distributed Table Lock (TTL 10 phút) & Auto-Release'
       date: SLOT_DATE,
       time: SLOT_TIME,
       sessionId: 'sess_user_a',
-      reservationId: null,
-      expiresAt: renewedExpiry,
+      reservationId: RESERVATION_ID,
+      expiresAt: originalExpiry,
     });
 
     const result = await acquireTableLock({
@@ -201,14 +202,28 @@ describe('TK-129 & TK-130: Distributed Table Lock (TTL 10 phút) & Auto-Release'
       date: SLOT_DATE,
       time: SLOT_TIME,
       sessionId: 'sess_user_a',
-      now,
+      reservationId: RESERVATION_ID,
+      now: step4ConfirmAt,
     });
 
     expect(result.acquired).toBe(true);
     if (result.acquired) {
       expect(result.renewed).toBe(true);
-      expect(result.lock.expiresAt).toBe(renewedExpiry.toISOString());
+      expect(result.lock.expiresAt).toBe(originalExpiry.toISOString());
     }
+    expect(mocks.tableLockFindOneAndUpdate).toHaveBeenCalledWith(
+      {
+        lockKey: SLOT_LOCK_KEY,
+        sessionId: 'sess_user_a',
+        expiresAt: { $gt: step4ConfirmAt },
+      },
+      expect.objectContaining({
+        $set: expect.not.objectContaining({
+          expiresAt: expect.anything(),
+        }),
+      }),
+      { returnDocument: 'after' }
+    );
     expect(mocks.tableLockCreate).not.toHaveBeenCalled();
   });
 
@@ -287,9 +302,26 @@ describe('TK-129 & TK-130: Distributed Table Lock (TTL 10 phút) & Auto-Release'
     expect(body.data.lockedUntil).toBe(lockedUntil.toISOString());
   });
 
-  it('returns 409 ALREADY_RESERVED when slot already has a non-cancelled reservation', async () => {
+  it('returns 409 ALREADY_RESERVED when slot overlaps an active CONFIRMED/CHECKED_IN reservation (180-minute window: 150m dining + 30m cleaning)', async () => {
     mockSelectLean(mocks.tableFindById, { _id: TABLE_ID, tableNumber: 'B01' });
-    mockSelectLean(mocks.reservationFindOne, { _id: RESERVATION_ID, paymentStatus: 'PAID' });
+    // Lần 1 (cleanup expired): [], lần 2 (same-day active reservations): đơn 19:00 (ăn tới 21:30 + dọn tới 22:00) chồng lấn với 21:45
+    mocks.reservationFind
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue([]) }),
+      })
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({
+          lean: vi.fn().mockResolvedValue([
+            {
+              _id: RESERVATION_ID,
+              time: '19:00',
+              startTime: new Date('2026-12-20T12:00:00.000Z'),
+              endTime: new Date('2026-12-20T14:30:00.000Z'),
+              paymentStatus: 'PAID',
+            },
+          ]),
+        }),
+      });
 
     const req = new NextRequest('http://localhost:3000/api/table-locks', {
       method: 'POST',
@@ -297,7 +329,7 @@ describe('TK-129 & TK-130: Distributed Table Lock (TTL 10 phút) & Auto-Release'
       body: JSON.stringify({
         tableId: TABLE_ID,
         date: SLOT_DATE,
-        time: SLOT_TIME,
+        time: '21:45',
         sessionId: 'sess_user_c',
       }),
     });
@@ -308,6 +340,69 @@ describe('TK-129 & TK-130: Distributed Table Lock (TTL 10 phút) & Auto-Release'
     expect(response.status).toBe(409);
     expect(body.success).toBe(false);
     expect(body.error).toBe('ALREADY_RESERVED');
+    expect(mocks.reservationFind).toHaveBeenLastCalledWith({
+      tableId: TABLE_ID,
+      date: SLOT_DATE,
+      status: { $in: ['CONFIRMED', 'CHECKED_IN'] },
+    });
+  });
+
+  it('returns 409 TABLE_LOCKED when another session holds an overlapping lock (19:00 vs 21:45) and releases previous unlinked lock of same session when switching tables', async () => {
+    const now = new Date('2026-11-20T10:00:00.000Z');
+    const otherExpiry = new Date(now.getTime() + 500_000);
+
+    // Lần 1: cleanup trả [], lần 2: activeOtherLocks trả lock lúc 19:00 của sess_user_a
+    mocks.tableLockFind
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue([]) }),
+      })
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({
+          lean: vi.fn().mockResolvedValue([
+            { _id: LOCK_ID, time: '19:00', expiresAt: otherExpiry },
+          ]),
+        }),
+      });
+
+    const overlapRes = await acquireTableLock({
+      tableId: TABLE_ID,
+      tableNumber: 'B01',
+      date: SLOT_DATE,
+      time: '21:45',
+      sessionId: 'sess_user_b',
+      now,
+    });
+
+    expect(overlapRes.acquired).toBe(false);
+    if (!overlapRes.acquired) {
+      expect(overlapRes.conflictReason).toBe('TABLE_LOCKED');
+      expect(overlapRes.lockedUntil?.toISOString()).toBe(otherExpiry.toISOString());
+    }
+
+    // Khi cùng session chuyển sang bàn khác ở Bước 2 -> xóa mọi lock sơ đồ cũ của session đó
+    setupDefaultEmptyCleanup();
+    mocks.tableLockFindOneAndUpdate.mockResolvedValue(null);
+    mocks.tableLockCreate.mockImplementation(async (payload: Record<string, unknown>) => ({
+      _id: LOCK_ID,
+      ...payload,
+    }));
+
+    const table2Id = '6717a01a1e0011a100000102';
+    const switchRes = await acquireTableLock({
+      tableId: table2Id,
+      tableNumber: 'B02',
+      date: SLOT_DATE,
+      time: SLOT_TIME,
+      sessionId: 'sess_user_a',
+      now,
+    });
+
+    expect(switchRes.acquired).toBe(true);
+    expect(mocks.tableLockDeleteMany).toHaveBeenCalledWith({
+      sessionId: 'sess_user_a',
+      lockKey: { $ne: buildTableLockKey(table2Id, SLOT_DATE, SLOT_TIME) },
+      reservationId: null,
+    });
   });
 
   it('auto-releases expired 10-minute locks, marks tx/reservation EXPIRED, frees table & allows new user', async () => {
@@ -572,6 +667,44 @@ describe('TK-129 & TK-130: Distributed Table Lock (TTL 10 phút) & Auto-Release'
     expect(data2.tables[0].isLocked).toBe(false);
     expect(data2.tables[0].isAvailable).toBe(true);
     expect(data2.tables[0].lockedUntil).toBeNull();
+
+    // Lần 3: truyền sessionId của chính chủ khóa -> nhận diện isLockedByCurrentSession=true & isAvailable=true (cho phép đi tiếp)
+    mocks.tableLockFind
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue([]) }),
+      })
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({
+          lean: vi.fn().mockResolvedValue([
+            {
+              tableId: TABLE_ID,
+              time: '19:00',
+              sessionId: 'sess_owner',
+              expiresAt: futureExpiry,
+            },
+          ]),
+        }),
+      });
+    mocks.reservationFind
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue([]) }),
+      })
+      .mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue([]) }),
+      });
+
+    const reqOwn = new NextRequest(
+      `http://localhost:3000/api/tables/availability?date=${SLOT_DATE}&time=19:15&guests=2&sessionId=sess_owner`
+    );
+    const resOwn = await tableAvailabilityGet(reqOwn);
+    const dataOwn = await resOwn.json();
+
+    expect(resOwn.status).toBe(200);
+    expect(dataOwn.tables[0].isLockedByCurrentSession).toBe(true);
+    expect(dataOwn.tables[0].isLocked).toBe(false);
+    expect(dataOwn.tables[0].isAvailable).toBe(true);
+    expect(dataOwn.tables[0].lockedUntil).toBe(futureExpiry.toISOString());
+    expect(dataOwn.tables[0].sessionId).toBeUndefined();
   });
 
   it('checks lock status via GET /api/table-locks without leaking sessionId and rejects invalid release reason', async () => {

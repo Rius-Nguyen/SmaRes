@@ -4,7 +4,15 @@ import { Suspense, useState, useEffect, useMemo, useSyncExternalStore } from 're
 import Link from 'next/link';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
-import { formatMoney } from '@/app/lib/format';
+import {
+  formatCountdownHhMmSs,
+  formatMoney,
+  formatVietnamTimeHm,
+} from '@/app/lib/format';
+import {
+  computeDiningInterval,
+  evaluateLateNightDiningNotice,
+} from '@/app/lib/reservationHelpers';
 
 interface LastBookingSnapshot {
   bookingCode?: string;
@@ -98,6 +106,36 @@ function BookingSuccessContent() {
 
   const [qrState, setQrState] = useState<QrFetchState | null>(null);
   const [copied, setCopied] = useState(false);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+
+  const diningWindow = useMemo(() => {
+    if (!date || !time) return null;
+    const interval = computeDiningInterval(date, time);
+    if (!interval) return null;
+    const startMs = interval.startTime.getTime();
+    const endMs = interval.endTime.getTime();
+    const graceEndMs = startMs + 15 * 60 * 1000;
+    const durationMinutes = Math.max(0, Math.round((endMs - startMs) / 60000));
+    const lateNotice = evaluateLateNightDiningNotice(date, time);
+    return {
+      startMs,
+      endMs,
+      graceEndMs,
+      durationMinutes,
+      isCapped: lateNotice.isCappedByClosing,
+      closingTimeLabel: lateNotice.closingTimeLabel,
+      startHm: formatVietnamTimeHm(startMs),
+      endHm: formatVietnamTimeHm(endMs),
+    };
+  }, [date, time]);
+
+  useEffect(() => {
+    if (!diningWindow) return;
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [diningWindow]);
 
   useEffect(() => {
     if (!tableNumber) return;
@@ -236,8 +274,10 @@ function BookingSuccessContent() {
               )}
               {(time || date) && (
                 <li>
-                  <span className="font-semibold text-stone-800">Thời gian:</span>{' '}
-                  {[time, date].filter(Boolean).join(', ')}
+                  <span className="font-semibold text-stone-800">Khung giờ dùng bữa:</span>{' '}
+                  {diningWindow
+                    ? `${diningWindow.startHm} – ${diningWindow.endHm}, ${date} (tối đa ${diningWindow.durationMinutes} phút${diningWindow.isCapped ? ` • đóng cửa ${diningWindow.closingTimeLabel}` : ''})`
+                    : [time, date].filter(Boolean).join(', ')}
                 </li>
               )}
               <li>
@@ -302,6 +342,37 @@ function BookingSuccessContent() {
             )}
           </div>
         </div>
+
+        {/* Đồng hồ đếm ngược tới giờ nhận bàn / giữ chỗ 15 phút (BR-RES-09) */}
+        {diningWindow && (
+          <div className="mb-5">
+            {nowMs < diningWindow.startMs ? (
+              <div className="rounded-2xl bg-[#f0fdf4] border border-[#bbf7d0] px-4 py-3 flex items-center justify-between gap-3 text-left">
+                <div className="text-xs text-[#14532d]">
+                  <p className="font-bold">Đếm ngược tới giờ nhận bàn</p>
+                  <p className="text-[11px] opacity-85">
+                    Giữ chỗ tối đa 15 phút sau giờ hẹn (BR-RES-09)
+                  </p>
+                </div>
+                <span className="font-mono font-bold text-sm sm:text-base text-[#14532d] bg-white px-3 py-1 rounded-xl border border-[#86efac] shrink-0">
+                  {formatCountdownHhMmSs(Math.ceil((diningWindow.startMs - nowMs) / 1000))}
+                </span>
+              </div>
+            ) : nowMs <= diningWindow.graceEndMs ? (
+              <div className="rounded-2xl bg-[#fffbeb] border border-[#fde68a] px-4 py-3 flex items-center justify-between gap-3 text-left">
+                <div className="text-xs text-[#92400e]">
+                  <p className="font-bold">Đang trong thời gian giữ chỗ 15 phút (BR-RES-09)</p>
+                  <p className="text-[11px] opacity-85">
+                    Vui lòng đến quầy lễ tân check-in trước khi hết giờ
+                  </p>
+                </div>
+                <span className="font-mono font-bold text-sm sm:text-base text-[#b45309] bg-white px-3 py-1 rounded-xl border border-[#fde68a] shrink-0">
+                  {formatCountdownHhMmSs(Math.ceil((diningWindow.graceEndMs - nowMs) / 1000))}
+                </span>
+              </div>
+            ) : null}
+          </div>
+        )}
 
         {/* Các nút hành động */}
         <div className="grid grid-cols-2 gap-3 mb-4">

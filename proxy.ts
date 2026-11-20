@@ -10,7 +10,7 @@ const ROUTE_ROLE_RULES: ReadonlyArray<{
   allowedRoles: readonly AuthRole[] | null;
 }> = [
   { prefixes: ['/admin'], allowedRoles: ['admin'] },
-  { prefixes: ['/staff', '/kds'], allowedRoles: ['staff', 'admin'] },
+  { prefixes: ['/staff', '/kds', '/qr'], allowedRoles: ['staff', 'admin'] },
   { prefixes: ['/history'], allowedRoles: null },
 ];
 
@@ -168,5 +168,12 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/staff/:path*', '/kds/:path*', '/history/:path*', '/booking/:path*'],
+  matcher: [
+    '/admin/:path*',
+    '/staff/:path*',
+    '/kds/:path*',
+    '/qr/:path*',
+    '/history/:path*',
+    '/booking/:path*',
+  ],
 };

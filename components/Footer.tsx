@@ -2,7 +2,7 @@ import Link from 'next/link';
 
 export default function Footer() {
   return (
-    <footer className="bg-[#0a1f14] text-[#d6d0c4] border-t border-[#14532d]/40 pt-16 pb-12 px-6 sm:px-10 lg:px-16 transition-colors">
+    <footer className="print:hidden bg-[#0a1f14] text-[#d6d0c4] border-t border-[#14532d]/40 pt-16 pb-12 px-6 sm:px-10 lg:px-16 transition-colors">
       <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-12 border-b border-[#14532d]/30 pb-12">
         {/* Cột 1: Giới thiệu & Thương hiệu */}
         <div className="space-y-4">

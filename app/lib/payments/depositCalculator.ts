@@ -20,6 +20,26 @@ export interface PreOrderItemInput {
 }
 
 /**
+ * Chuẩn hóa danh sách món đặt trước gửi lên từ Client.
+ */
+export function parsePreOrderItems(raw: unknown): PreOrderItemInput[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const items: PreOrderItemInput[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const record = entry as Record<string, unknown>;
+    const menuItemId = typeof record.menuItemId === 'string' ? record.menuItemId.trim() : '';
+    const quantity = Number(record.quantity);
+    if (menuItemId && Number.isInteger(quantity) && quantity >= 1) {
+      items.push({ menuItemId, quantity });
+    }
+  }
+  return items;
+}
+
+/**
  * Tra cứu đơn giá gốc từ MongoDB MenuItem để tính tổng tiền món đặt trước phía Server.
  * Tuyệt đối không tin giá tiền do Client gửi lên.
  */

@@ -9,7 +9,6 @@ import { useAuthSession } from '@/app/lib/useAuthSession';
 const NAV_LINKS = [
   { href: '/', label: 'Trang chủ' },
   { href: '/menu', label: 'Thực đơn' },
-  { href: '/table-menu', label: 'Menu tại bàn' },
   { href: '/about', label: 'Về chúng tôi' },
 ] as const;
 
@@ -56,7 +55,7 @@ export default function Navbar() {
   const cartHref = hasActiveBooking && !isAdmin ? '/booking/menu' : '/cart';
 
   return (
-    <header className="sticky top-0 z-50 bg-[#faf8f5]/92 backdrop-blur-md border-b border-[#ebe7df] shadow-[0_2px_12px_-2px_rgba(28,25,23,0.05)] transition-all">
+    <header className="print:hidden sticky top-0 z-50 bg-[#faf8f5]/92 backdrop-blur-md border-b border-[#ebe7df] shadow-[0_2px_12px_-2px_rgba(28,25,23,0.05)] transition-all">
       <nav className="max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-6 lg:px-10 py-3.5 gap-4">
         {/* Cụm Logo bên trái */}
         <Link
@@ -93,6 +92,18 @@ export default function Navbar() {
               </Link>
             );
           })}
+          {isStaffOrAdmin && (
+            <Link
+              href="/staff/qr"
+              className={`nav-link-subtle py-1 whitespace-nowrap ${
+                pathname === '/staff/qr' || pathname === '/qr'
+                  ? 'text-[#14532d]'
+                  : 'hover:text-[#14532d]'
+              }`}
+            >
+              Mã QR bàn
+            </Link>
+          )}
         </div>
 
         {/* Cụm nút bấm bên phải (Desktop >= lg) */}
@@ -384,6 +395,19 @@ export default function Navbar() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h12a2 2 0 012 2v3a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm0 9a2 2 0 012-2h4a2 2 0 012 2v3a2 2 0 01-2 2H6a2 2 0 01-2-2v-3zm10 0a2 2 0 012-2h2a2 2 0 012 2v3a2 2 0 01-2 2h-2a2 2 0 01-2-2v-3z" />
                     </svg>
                     <span>Quản lý bàn</span>
+                  </Link>
+                  <Link
+                    href="/staff/qr"
+                    onClick={closeMobileMenu}
+                    className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold bg-white text-[#14532d] border border-[#d6d0c4] hover:bg-[#f5f2eb]"
+                  >
+                    <svg className="w-3.5 h-3.5 text-[#14532d]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <rect x="3" y="3" width="7" height="7" strokeWidth={2} />
+                      <rect x="14" y="3" width="7" height="7" strokeWidth={2} />
+                      <rect x="3" y="14" width="7" height="7" strokeWidth={2} />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 14h3v3h-3zM17 17h4v4" />
+                    </svg>
+                    <span>Mã QR bàn</span>
                   </Link>
                 </div>
               </div>
