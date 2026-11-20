@@ -1,5 +1,5 @@
 # Dependencies
-/node_modules
+node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -12,8 +12,8 @@
 .nyc_output
 
 # Next.js build output
-/.next/
-/out/
+.next/
+out/
 /build
 dist
 
