@@ -1,4 +1,8 @@
 import { Schema, model, models, Model, Types } from 'mongoose';
+import {
+  computeDiningInterval,
+  DINING_DURATION_MS,
+} from '@/app/lib/reservationHelpers';
 
 export const ReservationStatus = {
   CONFIRMED: 'CONFIRMED',
@@ -30,11 +34,14 @@ export interface IReservation {
   phone: string;
   date: string;
   time: string;
+  startTime?: Date | null;
+  endTime?: Date | null;
   guests: number;
   note?: string;
   bookingCode: string;
   status: ReservationStatus;
   checkInTime?: Date | null;
+  actualEndTime?: Date | null;
   depositAmount?: number;
   paymentStatus?: PaymentStatus;
   holdExpiresAt?: Date | null;
@@ -88,6 +95,16 @@ const ReservationSchema = new Schema<IReservation>(
       required: [true, 'Vui lòng chọn khung giờ đặt bàn'],
       trim: true,
     },
+    startTime: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+    endTime: {
+      type: Date,
+      default: null,
+      index: true,
+    },
     guests: {
       type: Number,
       required: [true, 'Vui lòng nhập số lượng khách'],
@@ -115,6 +132,10 @@ const ReservationSchema = new Schema<IReservation>(
       type: Date,
       default: null,
     },
+    actualEndTime: {
+      type: Date,
+      default: null,
+    },
     depositAmount: {
       type: Number,
       default: 0,
@@ -138,6 +159,24 @@ const ReservationSchema = new Schema<IReservation>(
   }
 );
 
+// Tự động tính startTime & endTime (+150 phút) theo BR-RES-11 trước khi validate/save
+ReservationSchema.pre('validate', function () {
+  if (this.date && this.time) {
+    const interval = computeDiningInterval(this.date, this.time);
+    if (interval) {
+      if (!this.startTime || this.isModified('date') || this.isModified('time')) {
+        this.startTime = interval.startTime;
+      }
+      if (!this.endTime || this.isModified('date') || this.isModified('time') || this.isModified('startTime')) {
+        const baseStart = this.startTime instanceof Date ? this.startTime : interval.startTime;
+        this.endTime = new Date(baseStart.getTime() + DINING_DURATION_MS);
+      }
+    }
+  } else if (this.startTime instanceof Date && !this.endTime) {
+    this.endTime = new Date(this.startTime.getTime() + DINING_DURATION_MS);
+  }
+});
+
 ReservationSchema.index(
   { tableId: 1, date: 1, time: 1 },
   {
@@ -147,7 +186,6 @@ ReservationSchema.index(
         $in: [
           ReservationStatus.CONFIRMED,
           ReservationStatus.CHECKED_IN,
-          ReservationStatus.COMPLETED,
         ],
       },
     },

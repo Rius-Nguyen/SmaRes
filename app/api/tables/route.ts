@@ -6,6 +6,12 @@ import Table from '@/app/models/Table';
 import Reservation, { ReservationStatus, type IReservation } from '@/app/models/Reservation';
 import { requireRole } from '@/app/lib/auth';
 import {
+  DINING_DURATION_MS,
+  computeCleaningSchedule,
+  computeDiningInterval,
+  computeTableTimingMeta,
+} from '@/app/lib/reservationHelpers';
+import {
   TABLE_STATUS,
   type TableStatusValue,
   canTransitionTableStatus,
@@ -30,6 +36,8 @@ interface ActiveReservationSummary {
   phone: string;
   date: string;
   time: string;
+  startTime: string | null;
+  endTime: string | null;
   guests: number;
   note: string;
   status: ReservationStatus;
@@ -50,6 +58,24 @@ function generateTableQrToken(tableNumber: string): string {
 function toReservationSummary(
   res: IReservation & { _id?: unknown }
 ): ActiveReservationSummary {
+  const fallbackInterval = computeDiningInterval(res.date, res.time);
+  const startIso =
+    res.startTime instanceof Date
+      ? res.startTime.toISOString()
+      : typeof res.startTime === 'string'
+        ? res.startTime
+        : fallbackInterval
+          ? fallbackInterval.startTime.toISOString()
+          : null;
+  const endIso =
+    res.endTime instanceof Date
+      ? res.endTime.toISOString()
+      : typeof res.endTime === 'string'
+        ? res.endTime
+        : fallbackInterval
+          ? fallbackInterval.endTime.toISOString()
+          : null;
+
   return {
     _id: String(res._id ?? ''),
     bookingCode: res.bookingCode,
@@ -57,6 +83,8 @@ function toReservationSummary(
     phone: res.phone,
     date: res.date,
     time: res.time,
+    startTime: startIso,
+    endTime: endIso,
     guests: res.guests,
     note: res.note ?? '',
     status: res.status,
@@ -81,6 +109,35 @@ function pickPrimaryReservation(
   }
 
   return reservations.find((r) => r.status === ReservationStatus.CONFIRMED) ?? null;
+}
+
+function pickNextReservation(
+  reservations: readonly ActiveReservationSummary[],
+  activeReservation: ActiveReservationSummary | null,
+  todayDate: string
+): ActiveReservationSummary | null {
+  const candidates = reservations.filter(
+    (r) =>
+      r.status === ReservationStatus.CONFIRMED &&
+      (!activeReservation || r._id !== activeReservation._id)
+  );
+  if (candidates.length === 0) return null;
+
+  const todayCandidates = candidates.filter((r) => r.date === todayDate);
+  const pool = todayCandidates.length > 0 ? todayCandidates : candidates;
+
+  return [...pool].sort((a, b) => {
+    const aMs = a.startTime ? Date.parse(a.startTime) : Number.POSITIVE_INFINITY;
+    const bMs = b.startTime ? Date.parse(b.startTime) : Number.POSITIVE_INFINITY;
+    return aMs - bMs;
+  })[0] ?? null;
+}
+
+function toIsoOrNull(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isFinite(value.getTime()) ? value.toISOString() : null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 }
 
 export async function GET(request: NextRequest) {
@@ -128,6 +185,15 @@ export async function GET(request: NextRequest) {
 
       const tableReservations = reservationsByTableId.get(String(table._id)) ?? [];
       const activeReservation = pickPrimaryReservation(tableReservations, todayDate);
+      const nextReservation =
+        normalizedStatus === TABLE_STATUS.SEATED || normalizedStatus === TABLE_STATUS.CLEANING
+          ? pickNextReservation(tableReservations, activeReservation, todayDate)
+          : null;
+      const timingMeta = computeTableTimingMeta({
+        tableStatus: normalizedStatus,
+        tableUpdatedAt: table.updatedAt ?? null,
+        activeReservation,
+      });
 
       return {
         _id: String(table._id),
@@ -137,7 +203,16 @@ export async function GET(request: NextRequest) {
         status: normalizedStatus,
         qrToken: table.qrToken ?? null,
         activeReservation,
+        nextReservation,
         reservations: tableReservations,
+        startTime: timingMeta.startTime,
+        endTime: timingMeta.endTime,
+        diningStartAt: timingMeta.diningStartAt,
+        diningEndAt: timingMeta.diningEndAt,
+        graceExpiresAt: timingMeta.graceExpiresAt,
+        cleaningStartedAt: toIsoOrNull(table.cleaningStartedAt),
+        cleaningDeadlineAt: toIsoOrNull(table.cleaningDeadlineAt),
+        cleaningType: table.cleaningType ?? null,
         createdAt: table.createdAt ?? null,
         updatedAt: table.updatedAt ?? null,
       };
@@ -305,15 +380,74 @@ export async function PATCH(request: NextRequest) {
       nextStatus === TABLE_STATUS.CLEANING &&
       targetReservationStatus === ReservationStatus.COMPLETED
     ) {
+      const now = new Date();
+      const [checkedInReservation, upcomingConfirmed] = await Promise.all([
+        Reservation.findOne({
+          tableId: table._id,
+          status: ReservationStatus.CHECKED_IN,
+        })
+          .sort({ updatedAt: -1, createdAt: -1 })
+          .lean(),
+        Reservation.find({
+          tableId: table._id,
+          date: todayDate,
+          status: ReservationStatus.CONFIRMED,
+        })
+          .sort({ startTime: 1, time: 1 })
+          .lean(),
+      ]);
+
+      let diningEndMs: number | null = null;
+      if (checkedInReservation) {
+        const summary = toReservationSummary(checkedInReservation);
+        const timing = computeTableTimingMeta({
+          tableStatus: TABLE_STATUS.SEATED,
+          tableUpdatedAt: table.updatedAt ?? null,
+          activeReservation: summary,
+        });
+        diningEndMs = timing.diningEndAt ? Date.parse(timing.diningEndAt) : null;
+      } else if (table.updatedAt instanceof Date) {
+        diningEndMs = table.updatedAt.getTime() + DINING_DURATION_MS;
+      }
+
+      const nextConfirmed = upcomingConfirmed[0]
+        ? toReservationSummary(upcomingConfirmed[0])
+        : null;
+      const nextStartMs =
+        nextConfirmed?.startTime && Number.isFinite(Date.parse(nextConfirmed.startTime))
+          ? Date.parse(nextConfirmed.startTime)
+          : null;
+
+      const schedule = computeCleaningSchedule({
+        nowMs: now.getTime(),
+        diningEndMs,
+        nextReservationStartMs: nextStartMs,
+        hasNextReservation: Boolean(nextConfirmed),
+      });
+
+      table.cleaningStartedAt = schedule.cleaningStartedAt;
+      table.cleaningDeadlineAt = schedule.cleaningDeadlineAt;
+      table.cleaningType = schedule.cleaningType;
+
       await Reservation.updateMany(
         {
           tableId: table._id,
           status: ReservationStatus.CHECKED_IN,
         },
         {
-          $set: { status: ReservationStatus.COMPLETED },
+          $set: {
+            status: ReservationStatus.COMPLETED,
+            actualEndTime: now,
+          },
         }
       );
+    } else if (
+      previousStatus === TABLE_STATUS.CLEANING &&
+      nextStatus === TABLE_STATUS.AVAILABLE
+    ) {
+      table.cleaningStartedAt = null;
+      table.cleaningDeadlineAt = null;
+      table.cleaningType = null;
     } else if (
       previousStatus === TABLE_STATUS.RESERVED &&
       nextStatus === TABLE_STATUS.AVAILABLE &&
@@ -352,6 +486,15 @@ export async function PATCH(request: NextRequest) {
       toReservationSummary(res)
     );
     const activeReservation = pickPrimaryReservation(reservationSummaries, todayDate);
+    const nextReservation =
+      nextStatus === TABLE_STATUS.SEATED || nextStatus === TABLE_STATUS.CLEANING
+        ? pickNextReservation(reservationSummaries, activeReservation, todayDate)
+        : null;
+    const timingMeta = computeTableTimingMeta({
+      tableStatus: nextStatus,
+      tableUpdatedAt: table.updatedAt ?? new Date(),
+      activeReservation,
+    });
 
     return NextResponse.json(
       {
@@ -366,7 +509,16 @@ export async function PATCH(request: NextRequest) {
             status: nextStatus,
             qrToken: table.qrToken ?? null,
             activeReservation,
+            nextReservation,
             reservations: reservationSummaries,
+            startTime: timingMeta.startTime,
+            endTime: timingMeta.endTime,
+            diningStartAt: timingMeta.diningStartAt,
+            diningEndAt: timingMeta.diningEndAt,
+            graceExpiresAt: timingMeta.graceExpiresAt,
+            cleaningStartedAt: toIsoOrNull(table.cleaningStartedAt),
+            cleaningDeadlineAt: toIsoOrNull(table.cleaningDeadlineAt),
+            cleaningType: table.cleaningType ?? null,
             updatedAt: table.updatedAt ?? null,
           },
           updatedReservation,

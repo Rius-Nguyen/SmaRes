@@ -1,12 +1,23 @@
 "use client";
 
-import React, { useEffect, useId, useRef, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
-import { formatMoney } from '@/app/lib/format';
+import QRCode from 'qrcode';
+import { formatCountdownHhMmSs, formatMoney } from '@/app/lib/format';
 import { useToast } from '@/components/ui/Toast';
-import type { DepositTier } from '@/app/lib/payments/depositRules';
+import {
+  PRE_ORDER_DEPOSIT_RATE,
+  STANDARD_DEPOSIT_AMOUNT,
+  VIP_BASE_DEPOSIT_AMOUNT,
+  type DepositTier,
+} from '@/app/lib/payments/depositRules';
+import {
+  buildVietQrPayload,
+  getVietQrAccountConfig,
+  sanitizeTransferNote,
+} from '@/app/lib/payments/vietqr';
 
-export type DepositPaymentMethod = 'BANK_QR' | 'VNPAY' | 'MOMO';
+export type DepositPaymentMethod = 'BANK_QR' | 'VNPAY';
 export type SandboxPaymentProvider = 'VNPAY' | 'MOMO';
 
 export interface DepositBookingSummary {
@@ -31,6 +42,8 @@ export interface DepositPaymentModalProps {
   isOpen: boolean;
   booking: DepositBookingSummary | null;
   depositAmount: number;
+  baseTableDeposit?: number;
+  preOrderDeposit?: number;
   depositTier: DepositTier;
   preOrderTotal?: number;
   preOrderItems?: ReadonlyArray<DepositPreOrderItem>;
@@ -76,20 +89,16 @@ interface PaymentMethodOption {
 const PAYMENT_METHOD_OPTIONS: readonly PaymentMethodOption[] = [
   {
     id: 'BANK_QR',
-    title: 'Quét mã QR Ngân Hàng (VietQR)',
-    subtitle: 'Quét mã QR chuyển khoản trực tiếp kèm nội dung đối soát',
-    badge: 'Nhanh chóng',
+    title: 'Quét mã VietQR (App Ngân hàng / Ví MoMo)',
+    subtitle:
+      'Quét trực tiếp bằng mọi App Ngân hàng hoặc Ví MoMo — tự điền sẵn số tiền cọc & mã đặt bàn',
+    badge: 'Tự điền tiền & mã',
   },
   {
     id: 'VNPAY',
-    title: 'VNPay Sandbox',
-    subtitle: 'Thẻ ATM nội địa, VNPay QR, thẻ Visa / Mastercard (HMAC-SHA512)',
-    badge: 'Tự động IPN',
-  },
-  {
-    id: 'MOMO',
-    title: 'Ví MoMo Sandbox',
-    subtitle: 'Thanh toán nhanh qua ứng dụng Ví điện tử MoMo (captureWallet)',
+    title: 'VNPay Sandbox (Thẻ ATM / VNPay QR / Visa / Mastercard)',
+    subtitle:
+      'Thanh toán trực tuyến qua cổng VNPay Sandbox kèm xác thực chữ ký HMAC-SHA512 & IPN tự động',
     badge: 'Tự động IPN',
   },
 ];
@@ -105,6 +114,8 @@ function computeRemainingSeconds(expiresAtIso: string): number {
 function DepositPaymentModalContent({
   booking,
   depositAmount,
+  baseTableDeposit,
+  preOrderDeposit,
   depositTier,
   preOrderTotal = 0,
   preOrderItems,
@@ -123,6 +134,7 @@ function DepositPaymentModalContent({
   const [remainingSeconds, setRemainingSeconds] = useState<number>(() =>
     computeRemainingSeconds(lockExpiresAt)
   );
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [copied, setCopied] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [isReleasing, setIsReleasing] = useState<boolean>(false);
@@ -130,6 +142,51 @@ function DepositPaymentModalContent({
 
   const closingHandledRef = useRef<boolean>(false);
   const expiryHandledRef = useRef<boolean>(false);
+
+  const vietQrAccount = useMemo(() => getVietQrAccountConfig(), []);
+  const transferNote = useMemo(
+    () => sanitizeTransferNote(booking.bookingCode) || booking.bookingCode,
+    [booking.bookingCode]
+  );
+  const vietQrPayload = useMemo(
+    () =>
+      buildVietQrPayload({
+        amount: depositAmount,
+        bookingCode: transferNote,
+        bankBin: vietQrAccount.bankBin,
+        accountNo: vietQrAccount.accountNo,
+        serviceCode: vietQrAccount.serviceCode,
+      }),
+    [depositAmount, transferNote, vietQrAccount]
+  );
+
+  // Sinh ảnh Data URL từ chuỗi VietQR NAPAS 247 động bằng thư viện qrcode (đen/trắng tương phản cao + quiet zone chuẩn 4)
+  useEffect(() => {
+    let isCancelled = false;
+    QRCode.toDataURL(vietQrPayload, {
+      width: 260,
+      margin: 4,
+      errorCorrectionLevel: 'M',
+      color: {
+        dark: '#000000',
+        light: '#FFFFFF',
+      },
+    })
+      .then((url) => {
+        if (!isCancelled) {
+          setQrDataUrl(url);
+        }
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          setQrDataUrl('');
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [vietQrPayload]);
 
   // Mở native <dialog> top-layer bằng showModal(). Không gọi dialog.close() trong cleanup
   // để tránh React StrictMode double-effect phát sự kiện `close` làm tự hủy phiên giữ bàn.
@@ -157,9 +214,7 @@ function DepositPaymentModalContent({
     return () => clearInterval(timer);
   }, [lockExpiresAt, onCancelAndRelease]);
 
-  const minutes = Math.floor(remainingSeconds / 60);
-  const seconds = remainingSeconds % 60;
-  const formattedTime = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  const formattedTime = formatCountdownHhMmSs(remainingSeconds);
   const isExpired = remainingSeconds <= 0;
 
   const saveBookingSnapshot = (amountValue: number, extra?: Record<string, unknown>) => {
@@ -190,12 +245,12 @@ function DepositPaymentModalContent({
 
   const handleCopyCode = async () => {
     try {
-      await navigator.clipboard.writeText(booking.bookingCode);
+      await navigator.clipboard.writeText(transferNote);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
       const input = document.createElement('input');
-      input.value = booking.bookingCode;
+      input.value = transferNote;
       document.body.appendChild(input);
       input.select();
       document.execCommand('copy');
@@ -230,6 +285,7 @@ function DepositPaymentModalContent({
           reservationId: booking.reservationId,
           amount: depositAmount,
           provider: 'BANK_QR',
+          preOrderItems,
         }),
       });
 
@@ -260,7 +316,7 @@ function DepositPaymentModalContent({
     }
   };
 
-  const handleProceedGatewayPayment = async (provider: SandboxPaymentProvider) => {
+  const handleProceedVnpayPayment = async () => {
     if (isProcessing || isReleasing || isExpired) return;
 
     setIsProcessing(true);
@@ -272,7 +328,7 @@ function DepositPaymentModalContent({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           reservationId: booking.reservationId,
-          provider,
+          provider: 'VNPAY',
           sessionId: lockSessionId,
           preOrderItems,
         }),
@@ -282,8 +338,10 @@ function DepositPaymentModalContent({
 
       if (!response.ok || !json.success || !json.data?.paymentUrl) {
         const msg =
-          json.message ||
-          `Không thể khởi tạo phiên thanh toán ${provider}. Quý khách có thể dùng Quét mã QR Ngân Hàng ở trên.`;
+          json.error === 'PAYMENT_CONFIG_MISSING'
+            ? `${json.message || 'Chưa cấu hình khóa VNPay Sandbox trong .env.local (VNPAY_TMN_CODE, VNPAY_HASH_SECRET).'} Quý khách có thể chọn Quét mã VietQR ở trên để thanh toán ngay.`
+            : json.message ||
+              'Không thể khởi tạo phiên thanh toán VNPay Sandbox. Quý khách có thể dùng Quét mã VietQR ở trên.';
         setInlineError(msg);
         if (response.status === 409) {
           showToast(msg, 'error');
@@ -301,7 +359,7 @@ function DepositPaymentModalContent({
       closingHandledRef.current = true;
       window.location.href = json.data.paymentUrl;
     } catch {
-      const errText = `Mất kết nối khi khởi tạo cổng thanh toán ${provider}. Vui lòng thử lại.`;
+      const errText = 'Mất kết nối khi khởi tạo cổng thanh toán VNPay Sandbox. Vui lòng thử lại.';
       setInlineError(errText);
       showToast(errText, 'error');
       setIsProcessing(false);
@@ -313,7 +371,7 @@ function DepositPaymentModalContent({
       await handleConfirmBankQr();
       return;
     }
-    await handleProceedGatewayPayment(selectedMethod);
+    await handleProceedVnpayPayment();
   };
 
   return (
@@ -386,24 +444,67 @@ function DepositPaymentModalContent({
                 Bàn {booking.tableNumber} • {booking.time}, {booking.date}
               </span>
             </div>
-            <div className="pt-2 border-t border-[#EBE7DF] flex items-center justify-between">
-              <div>
-                <p className="text-[#57534E] font-medium">Số tiền đặt cọc</p>
-                <p className="text-[11px] text-[#78716C]">
-                  {depositTier === 'VIP_OR_LARGE'
-                    ? preOrderTotal > 0
-                      ? 'Phòng VIP / Bàn lớn (tối thiểu 300.000đ hoặc 20% thực đơn)'
-                      : 'Phòng VIP / Bàn tiệc lớn'
-                    : 'Bàn tiêu chuẩn (BR-RES-07)'}
-                </p>
-              </div>
-              <span className="font-serif font-bold text-xl text-[#D97706] shrink-0">
-                {formatMoney(depositAmount)}
-              </span>
+            <div className="pt-2 border-t border-[#EBE7DF] space-y-2">
+              {(() => {
+                const resolvedBase =
+                  typeof baseTableDeposit === 'number'
+                    ? baseTableDeposit
+                    : depositTier === 'VIP_OR_LARGE'
+                      ? VIP_BASE_DEPOSIT_AMOUNT
+                      : STANDARD_DEPOSIT_AMOUNT;
+                const resolvedPreOrderDeposit =
+                  typeof preOrderDeposit === 'number'
+                    ? preOrderDeposit
+                    : preOrderTotal > 0
+                      ? Math.round(preOrderTotal * PRE_ORDER_DEPOSIT_RATE)
+                      : Math.max(0, depositAmount - resolvedBase);
+
+                return (
+                  <>
+                    {preOrderTotal > 0 && resolvedPreOrderDeposit > 0 && (
+                      <div className="space-y-1 text-[11px] sm:text-xs text-[#57534E] bg-white border border-[#EBE7DF] rounded-xl px-3 py-2">
+                        <div className="flex items-center justify-between">
+                          <span>
+                            Cọc bàn (
+                            {depositTier === 'VIP_OR_LARGE'
+                              ? 'VIP / Bàn lớn'
+                              : 'Tiêu chuẩn'}
+                            ):
+                          </span>
+                          <span className="font-semibold text-[#1C1917]">
+                            {formatMoney(resolvedBase)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span>50% thực đơn ({formatMoney(preOrderTotal)}):</span>
+                          <span className="font-semibold text-[#1C1917]">
+                            {formatMoney(resolvedPreOrderDeposit)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-[#57534E] font-medium">Số tiền đặt cọc</p>
+                        <p className="text-[11px] text-[#78716C]">
+                          {depositTier === 'VIP_OR_LARGE'
+                            ? 'Phòng VIP / Bàn lớn (300.000đ + 50% thực đơn)'
+                            : preOrderTotal > 0
+                              ? 'Bàn tiêu chuẩn (100.000đ + 50% thực đơn)'
+                              : 'Bàn tiêu chuẩn (BR-RES-07)'}
+                        </p>
+                      </div>
+                      <span className="font-serif font-bold text-xl text-[#D97706] shrink-0">
+                        {formatMoney(depositAmount)}
+                      </span>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
 
-          {/* Lựa chọn phương thức thanh toán */}
+          {/* Lựa chọn 2 phương thức thanh toán: VietQR + VNPay Sandbox */}
           <fieldset
             disabled={isProcessing || isReleasing || isExpired}
             className="space-y-2 text-left"
@@ -460,20 +561,55 @@ function DepositPaymentModalContent({
           {/* Khối chi tiết cho từng phương thức */}
           {selectedMethod === 'BANK_QR' ? (
             <div className="space-y-3.5 text-center bg-[#FAF8F5] border border-[#EBE7DF] rounded-2xl p-4">
-              <div className="bg-white p-2.5 rounded-2xl border border-[#EBE7DF] inline-block mx-auto shadow-xs">
-                <Image
-                  src="/img/bank_qr.jpg"
-                  alt="Mã QR chuyển khoản tiền cọc SmaRes"
-                  width={208}
-                  height={208}
-                  className="w-48 h-48 sm:w-52 sm:h-52 object-contain mx-auto rounded-xl"
-                />
+              <div className="bg-white p-3 rounded-2xl border border-[#EBE7DF] inline-flex flex-col items-center mx-auto shadow-xs">
+                {qrDataUrl ? (
+                  <Image
+                    src={qrDataUrl}
+                    alt={`Mã VietQR động chuyển khoản ${formatMoney(depositAmount)} cho đơn ${booking.bookingCode}`}
+                    width={208}
+                    height={208}
+                    unoptimized
+                    className="w-48 h-48 sm:w-52 sm:h-52 object-contain mx-auto rounded-xl"
+                  />
+                ) : (
+                  <div className="w-48 h-48 sm:w-52 sm:h-52 rounded-xl bg-stone-100 animate-pulse flex items-center justify-center text-xs text-stone-400">
+                    Đang sinh mã VietQR...
+                  </div>
+                )}
+                <span className="mt-2 text-[10px] font-bold uppercase tracking-wider text-[#14532D] bg-[#F0FDF4] px-2.5 py-0.5 rounded-full border border-[#BBF7D0]">
+                  VietQR NAPAS 247 • App Ngân hàng &amp; MoMo
+                </span>
+              </div>
+
+              <div className="bg-white rounded-xl border border-[#EBE7DF] p-3 text-left text-xs space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[#78716C]">Ngân hàng thụ hưởng:</span>
+                  <span className="font-semibold text-[#1C1917]">
+                    {vietQrAccount.bankName} ({vietQrAccount.bankBin})
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[#78716C]">Số tài khoản:</span>
+                  <span className="font-mono font-bold text-[#14532D]">
+                    {vietQrAccount.accountNo}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[#78716C]">Chủ tài khoản:</span>
+                  <span className="font-semibold text-[#1C1917]">
+                    {vietQrAccount.accountName}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[#78716C]">Số tiền tự động điền:</span>
+                  <span className="font-bold text-[#D97706]">{formatMoney(depositAmount)}</span>
+                </div>
               </div>
 
               <div className="text-left space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-[#57534E] font-medium">
-                    Nội dung chuyển khoản (Bắt buộc):
+                    Nội dung chuyển khoản (Tự điền sẵn trong QR):
                   </span>
                   {copied && (
                     <span className="text-[11px] font-bold text-[#15803D] inline-flex items-center gap-1">
@@ -486,7 +622,7 @@ function DepositPaymentModalContent({
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="flex-1 bg-white border border-[#D6D0C4] rounded-xl px-3 py-2 font-mono font-bold text-[#14532D] text-base tracking-wider select-all">
-                    {booking.bookingCode}
+                    {transferNote}
                   </div>
                   <button
                     type="button"
@@ -501,9 +637,9 @@ function DepositPaymentModalContent({
                   </button>
                 </div>
                 <p className="text-[11px] text-[#78716C] leading-relaxed">
-                  Vui lòng quét mã QR trên bằng ứng dụng ngân hàng, kiểm tra đúng số tiền{' '}
-                  <strong className="text-[#D97706]">{formatMoney(depositAmount)}</strong> và giữ nguyên nội dung{' '}
-                  <strong className="font-mono text-[#1C1917]">{booking.bookingCode}</strong>, sau đó nhấn nút xác nhận bên dưới.
+                  Mở <strong>mọi App Ngân hàng</strong> hoặc <strong>Ví MoMo</strong> để quét mã VietQR trên — hệ thống sẽ tự động điền đúng{' '}
+                  <strong className="text-[#D97706]">{formatMoney(depositAmount)}</strong> và nội dung{' '}
+                  <strong className="font-mono text-[#1C1917]">{transferNote}</strong>, sau đó nhấn nút xác nhận bên dưới.
                 </p>
               </div>
             </div>
@@ -514,12 +650,12 @@ function DepositPaymentModalContent({
                 <path d="M7 11V7a5 5 0 0 1 10 0v4" />
               </svg>
               <span>
-                Giao dịch được thực hiện trực tiếp qua cổng bảo mật {selectedMethod} Sandbox. SmaRes không lưu trữ số thẻ, mã CVV hay mật khẩu ngân hàng của quý khách.
+                Giao dịch được thực hiện trực tiếp qua cổng bảo mật VNPay Sandbox (Thẻ ATM, VNPay QR, Visa / Mastercard). SmaRes không lưu trữ số thẻ, mã CVV hay mật khẩu ngân hàng của quý khách.
               </span>
             </p>
           )}
 
-          {/* Thông báo lỗi nghiệp vụ / lock conflict */}
+          {/* Thông báo lỗi nghiệp vụ / lock conflict / thiếu cấu hình Sandbox */}
           {inlineError && (
             <div className="p-3.5 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-800 flex items-start gap-2.5">
               <svg className="w-4 h-4 text-red-600 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -544,7 +680,7 @@ function DepositPaymentModalContent({
               <span>
                 {selectedMethod === 'BANK_QR'
                   ? 'Đang ghi nhận giao dịch cọc...'
-                  : `Đang khởi tạo cổng ${selectedMethod}...`}
+                  : 'Đang khởi tạo cổng VNPay Sandbox...'}
               </span>
             ) : selectedMethod === 'BANK_QR' ? (
               <>
@@ -555,10 +691,7 @@ function DepositPaymentModalContent({
               </>
             ) : (
               <>
-                <span>
-                  Thanh Toán Cọc {formatMoney(depositAmount)} Qua{' '}
-                  {selectedMethod === 'VNPAY' ? 'VNPay' : 'MoMo'}
-                </span>
+                <span>Thanh Toán Cọc {formatMoney(depositAmount)} Qua VNPay Sandbox</span>
                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true">
                   <path d="M5 12h14" />
                   <path d="m12 5 7 7-7 7" />

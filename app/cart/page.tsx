@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
@@ -165,9 +165,21 @@ function CartLoadingView() {
   );
 }
 
+const EMPTY_SUBSCRIBE = () => () => {};
+
+function readStoredQrTable(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    return (window.sessionStorage.getItem('smares_active_qr_table') ?? '').trim().toUpperCase();
+  } catch {
+    return '';
+  }
+}
+
 function CartContent() {
   const searchParams = useSearchParams();
   const tableParam = (searchParams.get('table') ?? '').trim().toUpperCase();
+  const sessionQrTable = useSyncExternalStore(EMPTY_SUBSCRIBE, readStoredQrTable, () => '');
 
   const {
     cart,
@@ -195,7 +207,10 @@ function CartContent() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [orderSuccess, setOrderSuccess] = useState<OrderSuccessInfo | null>(null);
 
-  const autoTableCandidate = tableParam || (bookingInfo?.tableNumber ?? '').trim().toUpperCase();
+  const autoTableCandidate =
+    tableParam ||
+    (bookingInfo?.tableNumber ?? '').trim().toUpperCase() ||
+    sessionQrTable;
   const tableInputValue = tableDraft ?? autoTableCandidate;
   const phoneValue = phoneDraft ?? (bookingInfo?.phone || userProfile?.phone || '');
   const notesValue = notesDraft ?? (bookingInfo?.note || '');
@@ -380,22 +395,41 @@ function CartContent() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3">
-            <Link
-              href="/orders"
-              className="flex-1 bg-[#14532d] hover:bg-[#15803d] text-white px-5 py-3.5 rounded-xl font-semibold text-sm transition-all shadow-[0_8px_24px_-4px_rgba(20,83,45,0.35)] inline-flex items-center justify-center gap-2"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 11l3 3L22 4" />
-                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-              </svg>
-              <span>Theo dõi đơn hàng</span>
-            </Link>
-            <Link
-              href={orderSuccess.tableNumber ? `/table-menu?table=${encodeURIComponent(orderSuccess.tableNumber)}` : '/menu'}
-              className="flex-1 bg-white hover:bg-[#f5f2eb] text-[#1c1917] border border-[#d6d0c4] px-5 py-3.5 rounded-xl font-semibold text-sm transition-colors inline-flex items-center justify-center gap-2"
-            >
-              <span>Gọi thêm món</span>
-            </Link>
+            {userProfile ? (
+              <>
+                <Link
+                  href="/orders"
+                  className="flex-1 bg-[#14532d] hover:bg-[#15803d] text-white px-5 py-3.5 rounded-xl font-semibold text-sm transition-all shadow-[0_8px_24px_-4px_rgba(20,83,45,0.35)] inline-flex items-center justify-center gap-2"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 11l3 3L22 4" />
+                    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                  </svg>
+                  <span>Theo dõi đơn hàng</span>
+                </Link>
+                <Link
+                  href={orderSuccess.tableNumber ? `/table-menu?table=${encodeURIComponent(orderSuccess.tableNumber)}` : '/menu'}
+                  className="flex-1 bg-white hover:bg-[#f5f2eb] text-[#1c1917] border border-[#d6d0c4] px-5 py-3.5 rounded-xl font-semibold text-sm transition-colors inline-flex items-center justify-center gap-2"
+                >
+                  <span>Gọi thêm món</span>
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link
+                  href={orderSuccess.tableNumber ? `/table-menu?table=${encodeURIComponent(orderSuccess.tableNumber)}` : '/menu'}
+                  className="flex-1 bg-[#14532d] hover:bg-[#15803d] text-white px-5 py-3.5 rounded-xl font-semibold text-sm transition-all shadow-[0_8px_24px_-4px_rgba(20,83,45,0.35)] inline-flex items-center justify-center gap-2"
+                >
+                  <span>Gọi thêm món tại bàn</span>
+                </Link>
+                <Link
+                  href="/menu"
+                  className="flex-1 bg-white hover:bg-[#f5f2eb] text-[#1c1917] border border-[#d6d0c4] px-5 py-3.5 rounded-xl font-semibold text-sm transition-colors inline-flex items-center justify-center gap-2"
+                >
+                  <span>Xem thực đơn</span>
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </main>
@@ -593,12 +627,21 @@ function CartContent() {
                     >
                       <span>Xem thực đơn</span>
                     </Link>
-                    <Link
-                      href="/table-menu"
-                      className="inline-flex items-center gap-2 bg-[#fffbeb] hover:bg-[#fef3c7] text-[#92400e] border border-[#fde68a] px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors"
-                    >
-                      <span>Menu gọi tại bàn</span>
-                    </Link>
+                    {tableInputValue ? (
+                      <Link
+                        href={`/table-menu?table=${encodeURIComponent(tableInputValue)}`}
+                        className="inline-flex items-center gap-2 bg-[#fffbeb] hover:bg-[#fef3c7] text-[#92400e] border border-[#fde68a] px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors"
+                      >
+                        <span>Thực đơn Bàn {tableInputValue}</span>
+                      </Link>
+                    ) : !isAdmin ? (
+                      <Link
+                        href="/booking"
+                        className="inline-flex items-center gap-2 bg-[#fffbeb] hover:bg-[#fef3c7] text-[#92400e] border border-[#fde68a] px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors"
+                      >
+                        <span>Đặt bàn ngay</span>
+                      </Link>
+                    ) : null}
                   </div>
                 </div>
               ) : (

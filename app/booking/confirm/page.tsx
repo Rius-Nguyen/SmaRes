@@ -5,12 +5,21 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import BookingStepper from '@/components/BookingStepper';
+import LockCountdownBanner from '@/components/booking/LockCountdownBanner';
 import DepositPaymentModal, {
   type DepositBookingSummary,
 } from '@/components/payment/DepositPaymentModal';
+import {
+  getOrCreateLockSessionId,
+  readActiveTableLock,
+  releaseClientTableLock,
+  writeActiveTableLock,
+  type ClientTableLockState,
+} from '@/app/lib/bookingLockClient';
 import { useCart } from '@/app/context/CartContext';
 import { useToast } from '@/components/ui/Toast';
 import { formatMoney } from '@/app/lib/format';
+import { evaluateLateNightDiningNotice } from '@/app/lib/reservationHelpers';
 import {
   calculateDepositAmount,
   type DepositTier,
@@ -73,6 +82,8 @@ interface OrderApiResponse {
 interface ActiveDepositSession {
   booking: DepositBookingSummary;
   depositAmount: number;
+  baseTableDeposit: number;
+  preOrderDeposit: number;
   depositTier: DepositTier;
   lockSessionId: string;
   lockExpiresAt: string;
@@ -94,13 +105,6 @@ function normalizePositiveInt(value: string | number | undefined, fallback: numb
     }
   }
   return fallback;
-}
-
-function createClientLockSessionId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return `sess_${crypto.randomUUID().replace(/-/g, '')}`;
-  }
-  return `sess_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function readPendingReservation(expectedSlotKey: string): CreatedReservationSnapshot | null {
@@ -144,6 +148,7 @@ export default function BookingConfirmPage() {
     cart,
     totalPrice,
     bookingInfo,
+    setBookingInfo,
     clearCart,
     clearBookingInfo,
     hasActiveBooking,
@@ -154,12 +159,23 @@ export default function BookingConfirmPage() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
+  const [isReleasingBannerLock, setIsReleasingBannerLock] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [errorActionTarget, setErrorActionTarget] = useState<'diagram' | 'menu' | null>(null);
   const [depositSession, setDepositSession] = useState<ActiveDepositSession | null>(null);
+  const [activeLock, setActiveLock] = useState<ClientTableLockState | null>(() =>
+    readActiveTableLock()
+  );
 
   const guestsCount = normalizePositiveInt(bookingInfo?.guests, 4);
   const tableCapacityCount = normalizePositiveInt(bookingInfo?.tableCapacity, 4);
+  const bookingDate = bookingInfo?.date ?? '';
+  const bookingTime = bookingInfo?.time ?? '';
+  const lateNotice = useMemo(() => {
+    if (!bookingDate || !bookingTime) return null;
+    const notice = evaluateLateNightDiningNotice(bookingDate, bookingTime);
+    return notice.severity !== 'NONE' ? notice : null;
+  }, [bookingDate, bookingTime]);
 
   const depositPreview = useMemo(
     () =>
@@ -232,7 +248,10 @@ export default function BookingConfirmPage() {
       selectedTableId = undefined;
     }
 
-    const sessionId = depositSession?.lockSessionId || createClientLockSessionId();
+    const sessionId =
+      depositSession?.lockSessionId ||
+      activeLock?.sessionId ||
+      getOrCreateLockSessionId();
     const slotKey = `${selectedTableId || bookingInfo.tableNumber}|${bookingInfo.date}|${bookingInfo.time}|${bookingInfo.phone}`;
 
     try {
@@ -398,6 +417,21 @@ export default function BookingConfirmPage() {
         // Bỏ qua lỗi sessionStorage
       }
 
+      const syncedLock: ClientTableLockState = {
+        lockKey:
+          lockData.data.lockKey ||
+          `${reservationSnapshot.tableId}:${reservationSnapshot.date}:${reservationSnapshot.time}`,
+        tableId: reservationSnapshot.tableId,
+        tableNumber: reservationSnapshot.tableNumber,
+        date: reservationSnapshot.date,
+        time: reservationSnapshot.time,
+        sessionId: resolvedSessionId,
+        expiresAt: resolvedExpiresAt,
+        reservationId: reservationSnapshot.reservationId,
+      };
+      writeActiveTableLock(syncedLock);
+      setActiveLock(syncedLock);
+
       // Bước 4: Mở Modal chọn phương thức thanh toán cọc (TK-132)
       setDepositSession({
         booking: {
@@ -413,6 +447,8 @@ export default function BookingConfirmPage() {
           phone: reservationSnapshot.phone,
         },
         depositAmount: depositPreview.amount,
+        baseTableDeposit: depositPreview.baseTableDeposit,
+        preOrderDeposit: depositPreview.preOrderDeposit,
         depositTier: depositPreview.depositTier,
         lockSessionId: resolvedSessionId,
         lockExpiresAt: resolvedExpiresAt,
@@ -429,10 +465,18 @@ export default function BookingConfirmPage() {
   const handleCancelAndRelease = useCallback(
     async (reason: 'USER_CANCELLED' | 'EXPIRED') => {
       const current = depositSession;
+      if (reason === 'USER_CANCELLED') {
+        setIsRedirecting(true);
+      }
       setDepositSession(null);
+      writeActiveTableLock(null);
+      setActiveLock(null);
 
       try {
         sessionStorage.removeItem(PENDING_RESERVATION_KEY);
+        if (reason === 'USER_CANCELLED') {
+          sessionStorage.removeItem('smares_selected_table_id');
+        }
       } catch {
         // Bỏ qua lỗi sessionStorage
       }
@@ -455,10 +499,70 @@ export default function BookingConfirmPage() {
         setErrorActionTarget('diagram');
         showToast(msg, 'warning');
       } else {
-        showToast('Đã hủy phiên thanh toán và giải phóng khóa bàn.', 'info');
+        setBookingInfo((prev) =>
+          prev
+            ? {
+                ...prev,
+                tableId: undefined,
+                tableNumber: undefined,
+                tableType: undefined,
+                tableCapacity: undefined,
+              }
+            : null
+        );
+        showToast(
+          'Đã hủy thanh toán và giải phóng khóa bàn. Đang quay về Bước 1.',
+          'info'
+        );
+        router.push('/booking');
       }
     },
-    [depositSession, releaseLockSafely, showToast]
+    [depositSession, releaseLockSafely, setBookingInfo, showToast, router]
+  );
+
+  const handleBannerLockRelease = useCallback(
+    async (lock: ClientTableLockState, reason: 'USER_CANCELLED' | 'EXPIRED') => {
+      setIsReleasingBannerLock(true);
+      try {
+        if (reason === 'USER_CANCELLED') {
+          setIsRedirecting(true);
+        }
+        await releaseClientTableLock(lock, reason);
+        setActiveLock(null);
+        try {
+          sessionStorage.removeItem(PENDING_RESERVATION_KEY);
+          if (reason === 'USER_CANCELLED') {
+            sessionStorage.removeItem('smares_selected_table_id');
+          }
+        } catch {
+          // Bỏ qua lỗi sessionStorage
+        }
+        if (reason === 'EXPIRED') {
+          const msg =
+            'Phiên giữ chỗ 10 phút đã hết hạn. Bàn đã được tự động giải phóng cho khách hàng khác.';
+          setErrorMsg(msg);
+          setErrorActionTarget('diagram');
+          showToast(msg, 'warning');
+        } else {
+          setBookingInfo((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  tableId: undefined,
+                  tableNumber: undefined,
+                  tableType: undefined,
+                  tableCapacity: undefined,
+                }
+              : null
+          );
+          showToast(`Đã hủy giữ khóa Bàn ${lock.tableNumber}. Đang quay về Bước 1.`, 'info');
+          router.push('/booking');
+        }
+      } finally {
+        setIsReleasingBannerLock(false);
+      }
+    },
+    [setBookingInfo, showToast, router]
   );
 
   const handleBankQrComplete = useCallback(
@@ -466,6 +570,8 @@ export default function BookingConfirmPage() {
       const current = depositSession;
       setIsRedirecting(true);
       setDepositSession(null);
+      writeActiveTableLock(null);
+      setActiveLock(null);
 
       try {
         sessionStorage.removeItem(PENDING_RESERVATION_KEY);
@@ -555,6 +661,16 @@ export default function BookingConfirmPage() {
         </div>
 
         <div className="space-y-6">
+          {/* Thanh đếm ngược giữ khóa bàn đồng bộ từ Bước 2 -> 3 -> 4 (ẩn khi modal đã mở để tránh trùng bộ đếm) */}
+          {activeLock && !depositSession && (
+            <LockCountdownBanner
+              lock={activeLock}
+              isReleasing={isReleasingBannerLock}
+              onExpired={(expired) => void handleBannerLockRelease(expired, 'EXPIRED')}
+              onRelease={(lock) => void handleBannerLockRelease(lock, 'USER_CANCELLED')}
+            />
+          )}
+
           {/* KHỐI 1: THÔNG TIN BÀN ĂN */}
           <div className="bg-white rounded-2xl shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] border border-[#e2e8e4] p-6 md:p-8">
             <div className="flex items-center justify-between border-b border-[#e2e8e4] pb-4 mb-5">
@@ -568,6 +684,11 @@ export default function BookingConfirmPage() {
                 <h2 className="font-serif font-bold text-xl text-[#155e42]">
                   1. Chi tiết Bàn &amp; Thời gian
                 </h2>
+                {lateNotice && (
+                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[#fff7ed] text-[#9a3412] border border-[#fdba74]">
+                    Khung giờ muộn • Đóng cửa {lateNotice.closingTimeLabel}
+                  </span>
+                )}
               </div>
               <Link
                 href="/booking/diagram"
@@ -598,8 +719,17 @@ export default function BookingConfirmPage() {
 
               <div className="bg-[#f4f7f5] p-4 rounded-xl border border-[#e2e8e4]">
                 <p className="text-xs text-stone-500 mb-1">Thời gian dùng bữa</p>
-                <p className="font-serif font-bold text-[#1c1917] text-lg">{bookingInfo?.time}</p>
+                <p className="font-serif font-bold text-[#1c1917] text-lg">
+                  {bookingInfo?.time}
+                  {lateNotice ? ` – ${lateNotice.effectiveEndHm}` : ''}
+                </p>
                 <p className="text-xs text-stone-500 mt-1">Ngày: {bookingInfo?.date}</p>
+                {lateNotice && (
+                  <p className="text-[11px] font-semibold text-[#9a3412] bg-[#fff7ed] border border-[#fdba74] rounded-lg px-2 py-1 mt-2">
+                    Khung giờ muộn (còn {lateNotice.remainingMinutes} phút trước giờ đóng cửa{' '}
+                    {lateNotice.closingTimeLabel})
+                  </p>
+                )}
               </div>
 
               <div className="bg-[#f4f7f5] p-4 rounded-xl border border-[#e2e8e4] sm:col-span-2 lg:col-span-1">
@@ -657,6 +787,13 @@ export default function BookingConfirmPage() {
                 <p className="text-xs sm:text-sm text-stone-600 mt-1 max-w-md mx-auto leading-relaxed">
                   Quý khách đã chọn bước gọi món trực tiếp tại nhà hàng. Đội ngũ nhân viên sẽ phục vụ menu chi tiết ngay khi quý khách ngồi vào bàn.
                 </p>
+                {lateNotice && (
+                  <p className="mt-3 text-xs text-[#9a3412] bg-[#fff7ed] border border-[#fdba74] rounded-xl px-3.5 py-2 max-w-md mx-auto">
+                    Lưu ý khung giờ muộn: Nhà hàng đóng cửa lúc{' '}
+                    <strong>{lateNotice.closingTimeLabel}</strong> (còn{' '}
+                    <strong>{lateNotice.remainingMinutes} phút</strong>) — bạn nên đặt món trước để không mất thời gian chờ bếp lên món.
+                  </p>
+                )}
                 <Link
                   href="/booking/menu"
                   className="mt-4 inline-flex items-center gap-1 text-xs sm:text-sm font-semibold text-[#155e42] hover:text-[#0e3f2d] underline decoration-[#155e42]/40 underline-offset-4"
@@ -746,14 +883,43 @@ export default function BookingConfirmPage() {
               </div>
             </div>
 
+            {depositPreview.preOrderDeposit > 0 && (
+              <div className="bg-[#faf8f5] rounded-xl border border-[#e2e8e4] p-4 space-y-2 text-xs sm:text-sm">
+                <div className="flex items-center justify-between text-stone-600">
+                  <span>
+                    Cọc bàn (
+                    {depositPreview.depositTier === 'VIP_OR_LARGE'
+                      ? 'Phòng VIP / Bàn tiệc lớn'
+                      : 'Bàn tiêu chuẩn'}
+                    ):
+                  </span>
+                  <span className="font-semibold text-[#1c1917]">
+                    {formatMoney(depositPreview.baseTableDeposit)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-stone-600">
+                  <span>
+                    50% thực đơn đặt trước ({formatMoney(depositPreview.preOrderTotal)}):
+                  </span>
+                  <span className="font-semibold text-[#1c1917]">
+                    {formatMoney(depositPreview.preOrderDeposit)}
+                  </span>
+                </div>
+                <div className="pt-2 border-t border-[#e2e8e4] flex items-center justify-between font-bold">
+                  <span className="text-[#155e42]">Tổng tiền cần đặt cọc:</span>
+                  <span className="text-[#d97706] font-serif text-base sm:text-lg">
+                    {formatMoney(depositPreview.amount)}
+                  </span>
+                </div>
+              </div>
+            )}
+
             <div className="bg-[#f0fdf4] rounded-xl border border-[#bbf7d0] p-4 text-xs sm:text-sm text-[#155e42] space-y-1.5">
               <ul className="list-disc pl-5 space-y-1.5 text-stone-600 leading-relaxed">
                 <li>
-                  Mức cọc áp dụng:{' '}
+                  Mức cọc áp dụng (BR-RES-07):{' '}
                   <strong className="text-[#155e42]">
-                    {depositPreview.depositTier === 'VIP_OR_LARGE'
-                      ? 'Phòng VIP / Bàn tiệc lớn (300.000đ hoặc 20% thực đơn đặt trước)'
-                      : 'Bàn tiêu chuẩn (100.000đ)'}
+                    100.000đ (Bàn tiêu chuẩn) / 300.000đ (VIP &amp; Bàn lớn) + 50% tổng tiền thực đơn đặt trước
                   </strong>
                   .
                 </li>
@@ -836,6 +1002,8 @@ export default function BookingConfirmPage() {
         isOpen={depositSession !== null}
         booking={depositSession?.booking ?? null}
         depositAmount={depositSession?.depositAmount ?? depositPreview.amount}
+        baseTableDeposit={depositSession?.baseTableDeposit ?? depositPreview.baseTableDeposit}
+        preOrderDeposit={depositSession?.preOrderDeposit ?? depositPreview.preOrderDeposit}
         depositTier={depositSession?.depositTier ?? depositPreview.depositTier}
         preOrderTotal={totalPrice}
         preOrderItems={preOrderItemsPayload}

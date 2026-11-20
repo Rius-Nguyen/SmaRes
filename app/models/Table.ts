@@ -9,6 +9,15 @@ export const TableStatus = {
 
 export type TableStatus = (typeof TableStatus)[keyof typeof TableStatus];
 
+export const TableCleaningType = {
+  EARLY_BONUS: 'EARLY_BONUS',
+  URGENT_15M: 'URGENT_15M',
+  RELAXED_30M: 'RELAXED_30M',
+} as const;
+
+export type TableCleaningType =
+  (typeof TableCleaningType)[keyof typeof TableCleaningType];
+
 export interface ITable {
   _id?: string;
   tableNumber: string;
@@ -16,6 +25,9 @@ export interface ITable {
   zoneName: string;
   status: TableStatus;
   qrToken?: string | null;
+  cleaningStartedAt?: Date | null;
+  cleaningDeadlineAt?: Date | null;
+  cleaningType?: TableCleaningType | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -49,6 +61,19 @@ const TableSchema = new Schema<ITable>(
     qrToken: {
       type: String,
       trim: true,
+      default: null,
+    },
+    cleaningStartedAt: {
+      type: Date,
+      default: null,
+    },
+    cleaningDeadlineAt: {
+      type: Date,
+      default: null,
+    },
+    cleaningType: {
+      type: String,
+      enum: [...Object.values(TableCleaningType), null],
       default: null,
     },
   },

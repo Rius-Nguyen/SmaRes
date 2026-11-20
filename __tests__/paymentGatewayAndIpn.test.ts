@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   releaseExpiredLocksAndHolds: vi.fn(),
   sendReservationConfirmationEmail: vi.fn(),
   menuItemFind: vi.fn(),
+  orderFindOne: vi.fn(),
   reservationFindById: vi.fn(),
   reservationFindOne: vi.fn(),
   reservationFindByIdAndUpdate: vi.fn(),
@@ -103,6 +104,18 @@ vi.mock('@/app/models/Transaction', () => ({
   },
 }));
 
+vi.mock('@/app/models/Order', () => ({
+  OrderStatus: {
+    PENDING: 'PENDING',
+    COOKING: 'COOKING',
+    COMPLETED: 'COMPLETED',
+    CANCELLED: 'CANCELLED',
+  },
+  default: {
+    findOne: mocks.orderFindOne,
+  },
+}));
+
 vi.mock('@/app/models/User', () => ({
   default: {
     findById: mocks.userFindById,
@@ -126,6 +139,7 @@ import {
 import { createMomoPayment, verifyMomoSignature } from '@/app/lib/payments/momo';
 import { sanitizeGatewayRawResponse } from '@/app/lib/payments/processIpn';
 import { POST as createPaymentPost } from '@/app/api/payments/create/route';
+import { POST as transactionsPost } from '@/app/api/transactions/route';
 import { GET as vnpayIpnGet } from '@/app/api/payments/vnpay-ipn/route';
 import { POST as momoIpnPost } from '@/app/api/payments/momo-ipn/route';
 import { GET as paymentStatusGet } from '@/app/api/payments/status/route';
@@ -235,15 +249,42 @@ describe('TK-126 & TK-127: Deposit Calc, VNPay/MoMo Sandbox, IPN & Status', () =
     expect(isVipOrLargeTable({ tableNumber: 'V01', zoneName: 'Khu VIP', capacity: 4, guests: 2 })).toBe(true);
     expect(isVipOrLargeTable({ tableNumber: 'B10', zoneName: 'Khu Trung Tâm', capacity: 8, guests: 6 })).toBe(true);
 
-    const std = calculateDepositAmount({
+    const stdNoPreOrder = calculateDepositAmount({
+      tableNumber: 'B02',
+      zoneName: 'Khu Trung Tâm',
+      capacity: 4,
+      guests: 4,
+      preOrderTotal: 0,
+    });
+    expect(stdNoPreOrder.baseTableDeposit).toBe(100_000);
+    expect(stdNoPreOrder.preOrderDeposit).toBe(0);
+    expect(stdNoPreOrder.amount).toBe(STANDARD_DEPOSIT_AMOUNT);
+    expect(stdNoPreOrder.depositTier).toBe(DepositTier.STANDARD);
+
+    // Ví dụ kiểm chứng BR-RES-07: Bàn 04 tiêu chuẩn + thực đơn 390.000đ = 100.000đ + 195.000đ = 295.000đ
+    const stdExamplePreOrder = calculateDepositAmount({
+      tableNumber: 'B04',
+      zoneName: 'Khu Trung Tâm',
+      capacity: 4,
+      guests: 4,
+      preOrderTotal: 390_000,
+    });
+    expect(stdExamplePreOrder.baseTableDeposit).toBe(100_000);
+    expect(stdExamplePreOrder.preOrderDeposit).toBe(195_000);
+    expect(stdExamplePreOrder.amount).toBe(295_000);
+    expect(stdExamplePreOrder.depositTier).toBe(DepositTier.STANDARD);
+
+    const stdLargePreOrder = calculateDepositAmount({
       tableNumber: 'B02',
       zoneName: 'Khu Trung Tâm',
       capacity: 4,
       guests: 4,
       preOrderTotal: 1_500_000,
     });
-    expect(std.amount).toBe(STANDARD_DEPOSIT_AMOUNT);
-    expect(std.depositTier).toBe(DepositTier.STANDARD);
+    expect(stdLargePreOrder.baseTableDeposit).toBe(100_000);
+    expect(stdLargePreOrder.preOrderDeposit).toBe(750_000);
+    expect(stdLargePreOrder.amount).toBe(850_000);
+    expect(stdLargePreOrder.depositTier).toBe(DepositTier.STANDARD);
 
     const vipNoPreOrder = calculateDepositAmount({
       tableNumber: 'V01',
@@ -252,6 +293,8 @@ describe('TK-126 & TK-127: Deposit Calc, VNPay/MoMo Sandbox, IPN & Status', () =
       guests: 6,
       preOrderTotal: 0,
     });
+    expect(vipNoPreOrder.baseTableDeposit).toBe(300_000);
+    expect(vipNoPreOrder.preOrderDeposit).toBe(0);
     expect(vipNoPreOrder.amount).toBe(VIP_BASE_DEPOSIT_AMOUNT);
     expect(vipNoPreOrder.depositTier).toBe(DepositTier.VIP_OR_LARGE);
 
@@ -262,7 +305,9 @@ describe('TK-126 & TK-127: Deposit Calc, VNPay/MoMo Sandbox, IPN & Status', () =
       guests: 8,
       preOrderTotal: 500_000,
     });
-    expect(vipSmallPreOrder.amount).toBe(300_000);
+    expect(vipSmallPreOrder.baseTableDeposit).toBe(300_000);
+    expect(vipSmallPreOrder.preOrderDeposit).toBe(250_000);
+    expect(vipSmallPreOrder.amount).toBe(550_000);
 
     const vipLargePreOrder = calculateDepositAmount({
       tableNumber: 'V01',
@@ -271,7 +316,9 @@ describe('TK-126 & TK-127: Deposit Calc, VNPay/MoMo Sandbox, IPN & Status', () =
       guests: 8,
       preOrderTotal: 3_500_000,
     });
-    expect(vipLargePreOrder.amount).toBe(700_000);
+    expect(vipLargePreOrder.baseTableDeposit).toBe(300_000);
+    expect(vipLargePreOrder.preOrderDeposit).toBe(1_750_000);
+    expect(vipLargePreOrder.amount).toBe(2_050_000);
 
     // Server tra cứu giá gốc MenuItem, không tin client
     mockSelectLean(mocks.menuItemFind, [{ _id: MENU_ITEM_ID, price: 250_000 }]);
@@ -279,6 +326,63 @@ describe('TK-126 & TK-127: Deposit Calc, VNPay/MoMo Sandbox, IPN & Status', () =
       { menuItemId: MENU_ITEM_ID, quantity: 3 },
     ]);
     expect(verifiedTotal).toBe(750_000);
+  });
+
+  it('POST /api/transactions enforces server-side BR-RES-07 calculation for BANK_QR', async () => {
+    const reservationSave = vi.fn().mockResolvedValue(undefined);
+    mocks.reservationFindById.mockResolvedValue({
+      _id: RESERVATION_ID,
+      tableId: '507f1f77bcf86cd799439021',
+      tableNumber: 'B04',
+      guests: 4,
+      phone: '0901234567',
+      customerName: 'Nguyen Van A',
+      status: 'PENDING',
+      depositAmount: 0,
+      save: reservationSave,
+    });
+    mockSelectLean(mocks.tableFindById, {
+      _id: '507f1f77bcf86cd799439021',
+      tableNumber: 'B04',
+      zoneName: 'Khu Trung Tâm',
+      capacity: 4,
+    });
+    mockSelectLean(mocks.menuItemFind, [{ _id: MENU_ITEM_ID, price: 195_000 }]);
+    mocks.transactionCreate.mockImplementation(async (doc: Record<string, unknown>) => ({
+      _id: TRANSACTION_ID,
+      createdAt: new Date('2026-11-21T10:00:00.000Z'),
+      ...doc,
+    }));
+
+    // Client cố tình truyền amount: 1000 -> server phải bỏ qua & tính 100.000 + 50% * 390.000 = 295.000
+    const req = new NextRequest('http://localhost:3000/api/transactions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        reservationId: RESERVATION_ID,
+        provider: 'BANK_QR',
+        amount: 1000,
+        preOrderItems: [{ menuItemId: MENU_ITEM_ID, quantity: 2 }],
+      }),
+    });
+
+    const res = await transactionsPost(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(body.success).toBe(true);
+    expect(body.data.baseTableDeposit).toBe(100_000);
+    expect(body.data.preOrderDeposit).toBe(195_000);
+    expect(body.data.preOrderTotal).toBe(390_000);
+    expect(body.data.amount).toBe(295_000);
+    expect(body.data.depositTier).toBe(DepositTier.STANDARD);
+    expect(mocks.transactionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 295_000,
+        provider: 'BANK_QR',
+      }),
+    );
+    expect(reservationSave).toHaveBeenCalled();
   });
 
   it('generates and verifies VNPay HMAC-SHA512 URL with Vietnam UTC+7 timestamps', () => {
@@ -393,7 +497,7 @@ describe('TK-126 & TK-127: Deposit Calc, VNPay/MoMo Sandbox, IPN & Status', () =
     mocks.transactionFindByIdAndUpdate.mockResolvedValue({});
     mocks.reservationFindByIdAndUpdate.mockResolvedValue({});
 
-    // Client cố tình truyền amount: 1000 -> server phải bỏ qua & tính 20% của 2.000.000 = 400.000
+    // Client cố tình truyền amount: 1000 -> server phải bỏ qua & tính 300.000 + 50% của 2.000.000 = 1.300.000
     const req = new NextRequest('http://localhost:3000/api/payments/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -410,9 +514,11 @@ describe('TK-126 & TK-127: Deposit Calc, VNPay/MoMo Sandbox, IPN & Status', () =
 
     expect(res.status).toBe(201);
     expect(body.success).toBe(true);
-    expect(body.data.amount).toBe(400_000);
+    expect(body.data.baseTableDeposit).toBe(300_000);
+    expect(body.data.preOrderDeposit).toBe(1_000_000);
+    expect(body.data.amount).toBe(1_300_000);
     expect(body.data.depositTier).toBe(DepositTier.VIP_OR_LARGE);
-    expect(body.data.paymentUrl).toContain('vnp_Amount=40000000');
+    expect(body.data.paymentUrl).toContain('vnp_Amount=130000000');
     expect(body.data.sessionId).toBe('sess_123');
 
     // Trường hợp lock bị user khác giữ -> trả HTTP 409 Conflict
