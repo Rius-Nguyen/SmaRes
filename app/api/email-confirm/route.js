@@ -4,13 +4,12 @@ export async function POST(request) {
   const startTime = Date.now();
   const body = await request.json();
 
-  const bookingId = (body.bookingId || 'SR-2026-4795').trim();
-  const customerName = (body.customerName || 'Thanh Hai').trim();
-  const customerEmail = (body.customerEmail || 'thanhhai@gmail.com').trim();
-  const tableId = (body.tableId || 'B05').trim().toUpperCase();
-  const guests = Number(body.guests || 2);
-  const bookingTime = (body.bookingTime || '12:00, 19/11/2026').trim();
-  const depositAmount = Number(body.depositAmount || 100000);
+  const bookingId = (body.bookingId || 'RES-3E3910').trim();
+  const customerName = (body.customerName || 'Hương Giang').trim();
+  const customerEmail = (body.customerEmail || 'huonggiang3206@gmail.com').trim();
+  const tableId = (body.tableId || 'B02').trim().toUpperCase();
+  const guests = Number(body.guests || 4);
+  const bookingTime = (body.bookingTime || '11:30, 2026-11-20').trim();
 
   const elapsedMs = Date.now() - startTime;
 
@@ -20,8 +19,15 @@ export async function POST(request) {
     withinOneMinuteSLA: elapsedMs < 60000,
     email: {
       to: customerEmail,
-      subject: `[SmaRes] Xác nhận đặt bàn thành công - Mã ${bookingId}`,
-      details: { bookingId, customerName, tableId, guests, bookingTime, depositAmount }
-    }
+      subject: `Xác nhận đặt bàn thành công tại SmaRes Gastronomy (#${bookingId})`,
+      details: {
+        bookingId,
+        customerName,
+        customerEmail,
+        tableId,
+        guests,
+        bookingTime,
+      },
+    },
   });
 }
