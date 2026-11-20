@@ -1,6 +1,26 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+
+interface EmailDetails {
+  bookingId?: string;
+  customerName?: string;
+  tableId?: string;
+  bookingTime?: string;
+  guests?: number | string;
+  depositAmount?: number | string;
+}
+
+interface EmailTestResponse {
+  success?: boolean;
+  message?: string;
+  withinOneMinuteSLA?: boolean;
+  clientMs?: number;
+  email?: {
+    to?: string;
+    details?: EmailDetails;
+  };
+}
 
 export default function EmailTestPage() {
   const [customerEmail, setCustomerEmail] = useState('thanhhai@gmail.com');
@@ -10,10 +30,10 @@ export default function EmailTestPage() {
   const [guests, setGuests] = useState(2);
   const [bookingTime, setBookingTime] = useState('12:00, 19/11/2026');
   const [depositAmount, setDepositAmount] = useState(100000);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<EmailTestResponse | null>(null);
   const [sending, setSending] = useState(false);
 
-  const runTest = async () => {
+  const runTest = useCallback(async () => {
     try {
       setSending(true);
       const t0 = performance.now();
@@ -30,7 +50,7 @@ export default function EmailTestPage() {
           depositAmount,
         }),
       });
-      const data = await res.json();
+      const data = (await res.json()) as EmailTestResponse;
       const clientMs = Math.max(1, Math.round(performance.now() - t0));
       setResult({ ...data, clientMs });
     } catch (err) {
@@ -38,10 +58,49 @@ export default function EmailTestPage() {
     } finally {
       setSending(false);
     }
-  };
+  }, [customerEmail, customerName, bookingId, tableId, guests, bookingTime, depositAmount]);
 
   useEffect(() => {
-    runTest();
+    let active = true;
+
+    async function initialTest() {
+      try {
+        setSending(true);
+        const t0 = performance.now();
+        const res = await fetch('/api/email-confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customerEmail: 'thanhhai@gmail.com',
+            customerName: 'Thanh Hai',
+            bookingId: 'SR-2026-4795',
+            tableId: 'B05',
+            guests: 2,
+            bookingTime: '12:00, 19/11/2026',
+            depositAmount: 100000,
+          }),
+        });
+        const data = (await res.json()) as EmailTestResponse;
+        const clientMs = Math.max(1, Math.round(performance.now() - t0));
+        if (active) {
+          setResult({ ...data, clientMs });
+        }
+      } catch (err) {
+        if (active) {
+          console.error('Lỗi test email:', err);
+        }
+      } finally {
+        if (active) {
+          setSending(false);
+        }
+      }
+    }
+
+    void initialTest();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const info = result?.email?.details;
@@ -172,7 +231,7 @@ export default function EmailTestPage() {
 
               <button
                 type="button"
-                onClick={runTest}
+                onClick={() => void runTest()}
                 disabled={sending}
                 className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-[#13543b] to-[#1b7352] hover:from-[#0f4430] hover:to-[#155e42] active:scale-[0.99] text-white font-semibold text-sm shadow-md shadow-[#155e42]/20 transition cursor-pointer"
               >
@@ -245,7 +304,7 @@ export default function EmailTestPage() {
                   </div>
                   <p className="truncate">
                     <span className="text-gray-400 inline-block w-12">Tới:</span>
-                    <span className="font-medium text-gray-800">{result.email.to}</span>
+                    <span className="font-medium text-gray-800">{result.email?.to}</span>
                   </p>
                   <p className="pt-1 text-sm font-bold text-gray-900">
                     Xác nhận đặt bàn thành công tại SmaRes Gastronomy (#{info.bookingId})
