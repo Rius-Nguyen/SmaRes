@@ -183,5 +183,5 @@ npm run build  # Build kiểm tra bản production
 | **Mã môn học** | **CMU-IS 432 AIS** |
 | **Tên dự án** | **SmaRes — Smart Restaurant Management & Table Reservation System** |
 | **Phiên bản phát hành** | `v1.0.0` |
-| **Giảng viên hướng dẫn** | *[Cập nhật họ tên Giảng viên hướng dẫn theo báo cáo nhóm]* |
+| **Giảng viên hướng dẫn** | Lê Kim Hoàng |
 | **Kho lưu trữ mã nguồn** | [github.com/Rius-Nguyen/SmaRes](https://github.com/Rius-Nguyen/SmaRes) |
