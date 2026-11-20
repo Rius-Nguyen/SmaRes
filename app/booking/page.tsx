@@ -183,7 +183,7 @@ function BookingStepOneForm({
   const hasCustomGuestValue = !GUEST_OPTIONS.some((opt) => opt.value === formData.guests);
 
   return (
-    <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
       <div>
         <label htmlFor="booking-name" className="block text-sm font-semibold text-stone-800 mb-2">
           Họ và tên *
@@ -320,10 +320,10 @@ function BookingStepOneForm({
       <div className="md:col-span-2 mt-2">
         <button
           type="submit"
-          className="interactive-btn w-full flex items-center justify-center gap-2 bg-[#155e42] hover:bg-[#0e3f2d] text-white font-semibold py-4 rounded-xl shadow-[0_8px_24px_-4px_rgba(21,94,66,0.45)] hover:shadow-[0_12px_28px_-4px_rgba(21,94,66,0.6)] text-base sm:text-lg"
+          className="interactive-btn w-full flex items-center justify-center gap-2 bg-[#155e42] hover:bg-[#0e3f2d] text-white font-semibold py-3.5 sm:py-4 rounded-xl shadow-[0_8px_24px_-4px_rgba(21,94,66,0.45)] hover:shadow-[0_12px_28px_-4px_rgba(21,94,66,0.6)] text-sm sm:text-lg"
         >
           <span>Tiếp tục: Chọn vị trí bàn trên sơ đồ</span>
-          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M5 12h14" />
             <path d="m12 5 7 7-7 7" />
           </svg>
@@ -357,22 +357,22 @@ export default function BookingPage() {
   };
 
   return (
-    <main className="flex-1 bg-[#f4f7f5] text-[#1c1917] flex flex-col min-h-screen">
+    <main className="flex-1 bg-[#f4f7f5] text-[#1c1917] flex flex-col min-h-screen pb-24 sm:pb-16">
       {/* Banner */}
       <div
-        className="relative h-[34vh] md:h-[38vh] bg-cover bg-center flex items-center justify-center overflow-hidden"
+        className="relative h-[34vh] min-h-[220px] md:h-[38vh] bg-cover bg-center flex items-center justify-center overflow-hidden"
         style={{ backgroundImage: "url('/foods/hero-bg3.jpg')" }}
       >
         <div className="absolute inset-0 bg-gradient-to-b from-black/75 via-black/60 to-[#0e3f2d]/85" />
-        <div className="relative z-10 text-center text-white px-4 mt-4 max-w-3xl mx-auto">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#155e42]/80 border border-[#fbbf24]/40 text-[#fde68a] text-xs font-semibold uppercase tracking-widest mb-3 backdrop-blur-md">
+        <div className="relative z-10 text-center text-white px-4 pt-3 sm:pt-0 mt-2 sm:mt-4 max-w-3xl mx-auto">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#155e42]/80 border border-[#fbbf24]/40 text-[#fde68a] text-xs font-semibold uppercase tracking-widest mb-2.5 sm:mb-3 backdrop-blur-md">
             <span className="w-1.5 h-1.5 rounded-full bg-[#fbbf24]" />
             SmaRes Gastronomy
           </div>
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-serif font-bold text-white mb-3 tracking-tight">
+          <h1 className="text-2xl sm:text-4xl md:text-5xl font-serif font-bold text-white mb-2 sm:mb-3 tracking-tight leading-tight">
             Đặt Bàn Trực Tuyến
           </h1>
-          <p className="text-sm md:text-base text-stone-200 font-light max-w-xl mx-auto leading-relaxed">
+          <p className="text-xs sm:text-sm md:text-base text-stone-200 font-light max-w-xl mx-auto leading-relaxed">
             Hãy để chúng tôi chuẩn bị sẵn sàng cho trải nghiệm ẩm thực thượng hạng của bạn.
           </p>
         </div>
@@ -382,23 +382,23 @@ export default function BookingPage() {
       <BookingStepper currentStep={1} />
 
       {/* Nội dung Form */}
-      <div className="max-w-7xl mx-auto py-10 px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-3 gap-8 relative z-20 w-full">
+      <div className="max-w-7xl mx-auto py-7 sm:py-10 px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 relative z-20 w-full">
         {/* Cột trái: Form điền thông tin (chiếm 2 phần) */}
-        <div className="lg:col-span-2 bg-white rounded-2xl shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] p-8 md:p-10 border border-[#e2e8e4]">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-2xl md:text-3xl font-serif font-bold text-[#155e42]">
+        <div className="lg:col-span-2 bg-white rounded-2xl shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] p-5 sm:p-8 md:p-10 border border-[#e2e8e4]">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-serif font-bold text-[#155e42] leading-snug">
               1. Thông tin đặt bàn
             </h2>
-            <span className="text-xs sm:text-sm font-semibold px-3.5 py-1 bg-[#f0fdf4] text-[#155e42] rounded-full border border-[#bbf7d0]">
+            <span className="text-xs sm:text-sm font-semibold px-3 py-1 bg-[#f0fdf4] text-[#155e42] rounded-full border border-[#bbf7d0] shrink-0 whitespace-nowrap">
               Bước 1 / 4
             </span>
           </div>
-          <p className="text-stone-600 text-sm md:text-base mb-8 pb-4 border-b border-[#e2e8e4]">
+          <p className="text-stone-600 text-xs sm:text-sm md:text-base mb-6 sm:mb-8 pb-4 border-b border-[#e2e8e4] leading-relaxed">
             Vui lòng điền đầy đủ thông tin bên dưới để SmaRes phục vụ bạn chu đáo nhất
           </p>
 
           {!isLoaded ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-pulse">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 animate-pulse">
               <div className="h-16 bg-stone-200/70 rounded-xl" />
               <div className="h-16 bg-stone-200/70 rounded-xl" />
               <div className="h-16 bg-stone-200/70 rounded-xl" />
@@ -420,16 +420,16 @@ export default function BookingPage() {
         </div>
 
         {/* Cột phải: Thông tin thêm (chiếm 1 phần) */}
-        <div className="space-y-6">
-          <div className="bg-[#0e3f2d] rounded-2xl p-8 text-white shadow-md border border-[#155e42]/40 relative overflow-hidden">
+        <div className="space-y-5 sm:space-y-6">
+          <div className="bg-[#0e3f2d] rounded-2xl p-6 sm:p-8 text-white shadow-md border border-[#155e42]/40 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-[#fbbf24]/5 rounded-full blur-2xl" />
-            <h3 className="text-2xl font-serif font-bold text-[#fbbf24] mb-4">
+            <h3 className="text-xl sm:text-2xl font-serif font-bold text-[#fbbf24] mb-3 sm:mb-4">
               SmaRes Gastronomy
             </h3>
-            <p className="text-sm text-stone-300 mb-6 leading-relaxed font-light">
+            <p className="text-xs sm:text-sm text-stone-300 mb-5 sm:mb-6 leading-relaxed font-light">
               Hương vị truyền thống được chế tác thông minh và chuẩn mực cao cấp. Khám phá ẩm thực mới lạ trong không gian mang hơi thở Á Đông hiện đại.
             </p>
-            <ul className="space-y-4 text-sm text-stone-300">
+            <ul className="space-y-3.5 sm:space-y-4 text-xs sm:text-sm text-stone-300">
               <li className="flex items-start gap-3">
                 <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#155e42] text-[#fbbf24] shrink-0 border border-[#22c55e]/20">
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -459,11 +459,11 @@ export default function BookingPage() {
             </ul>
           </div>
 
-          <div className="bg-white rounded-2xl p-7 border border-[#e2e8e4] shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)]">
-            <h3 className="text-[#155e42] font-serif font-bold mb-4 text-xl">
+          <div className="bg-white rounded-2xl p-5 sm:p-7 border border-[#e2e8e4] shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)]">
+            <h3 className="text-[#155e42] font-serif font-bold mb-3 sm:mb-4 text-lg sm:text-xl">
               Quy trình 4 bước tiện lợi
             </h3>
-            <ol className="text-sm text-stone-700 space-y-3.5 list-decimal pl-5 leading-relaxed">
+            <ol className="text-xs sm:text-sm text-stone-700 space-y-3 sm:space-y-3.5 list-decimal pl-5 leading-relaxed">
               <li>
                 <strong className="text-stone-900 font-semibold">Đặt thông tin bàn:</strong> Điền thời gian và số lượng khách.
               </li>
