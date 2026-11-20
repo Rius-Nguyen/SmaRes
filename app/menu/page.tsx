@@ -6,6 +6,7 @@ import { useCart } from '@/app/context/CartContext';
 import { formatMoney } from '@/app/lib/format';
 import { INITIAL_MENU_ITEMS, MenuItemData } from '@/app/lib/menuInitialData';
 import DishCard from '@/components/menu/DishCard';
+import { DishSkeletonCard } from '@/components/ui/SkeletonCard';
 import SpecialDishModal from '@/components/menu/SpecialDishModal';
 import { useToast } from '@/components/ui/Toast';
 
@@ -251,15 +252,7 @@ export default function MenuPage() {
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div key={i} className="bg-white rounded-2xl border border-[#e2e8e4] overflow-hidden animate-pulse">
-                <div className="aspect-[4/3] bg-stone-200" />
-                <div className="p-6 space-y-3">
-                  <div className="h-5 bg-stone-200 rounded-md w-3/4" />
-                  <div className="h-4 bg-stone-100 rounded-md w-full" />
-                  <div className="h-4 bg-stone-100 rounded-md w-2/3" />
-                  <div className="h-10 bg-stone-200 rounded-xl mt-4" />
-                </div>
-              </div>
+              <DishSkeletonCard key={i} />
             ))}
           </div>
         ) : filteredMenu.length === 0 ? (

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import BookingStepper from '@/components/BookingStepper';
 import { useCart, type BookingInfo } from '@/app/context/CartContext';
+import { useToast } from '@/components/ui/Toast';
 
 interface StoredUserPreview {
   name?: string;
@@ -194,7 +195,7 @@ function BookingStepOneForm({
           value={formData.name}
           onChange={handleFieldChange}
           placeholder="Ví dụ: Nguyễn Văn A"
-          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#14532d] focus:border-[#14532d] outline-none transition-all bg-white"
+          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#155e42] focus:border-[#155e42] outline-none transition-all bg-white"
           required
         />
       </div>
@@ -210,7 +211,7 @@ function BookingStepOneForm({
           value={formData.phone}
           onChange={handleFieldChange}
           placeholder="09xx xxx xxx"
-          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#14532d] focus:border-[#14532d] outline-none transition-all bg-white"
+          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#155e42] focus:border-[#155e42] outline-none transition-all bg-white"
           required
         />
       </div>
@@ -226,7 +227,7 @@ function BookingStepOneForm({
           value={formData.email}
           onChange={handleFieldChange}
           placeholder="nguyenvana@gmail.com"
-          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#14532d] focus:border-[#14532d] outline-none transition-all bg-white"
+          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#155e42] focus:border-[#155e42] outline-none transition-all bg-white"
         />
       </div>
 
@@ -241,7 +242,7 @@ function BookingStepOneForm({
           min={todayStr}
           value={formData.date}
           onChange={handleFieldChange}
-          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#14532d] focus:border-[#14532d] outline-none transition-all text-stone-800 bg-white"
+          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#155e42] focus:border-[#155e42] outline-none transition-all text-stone-800 bg-white"
           required
         />
       </div>
@@ -255,7 +256,7 @@ function BookingStepOneForm({
           name="time"
           value={formData.time}
           onChange={handleFieldChange}
-          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#14532d] focus:border-[#14532d] outline-none transition-all text-stone-800 bg-white"
+          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#155e42] focus:border-[#155e42] outline-none transition-all text-stone-800 bg-white"
         >
           {TIME_SLOTS.map((slot) => (
             <option key={slot.value} value={slot.value}>
@@ -274,7 +275,7 @@ function BookingStepOneForm({
           name="guests"
           value={String(formData.guests)}
           onChange={handleFieldChange}
-          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#14532d] focus:border-[#14532d] outline-none transition-all text-stone-800 bg-white"
+          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#155e42] focus:border-[#155e42] outline-none transition-all text-stone-800 bg-white"
         >
           {hasCustomGuestValue && (
             <option value={String(formData.guests)}>{formData.guests} người</option>
@@ -298,7 +299,7 @@ function BookingStepOneForm({
           onChange={handleFieldChange}
           rows={3}
           placeholder="Ví dụ: Ghế trẻ em, dị ứng hải sản, tổ chức sinh nhật, bàn yên tĩnh..."
-          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#14532d] focus:border-[#14532d] outline-none transition-all bg-white"
+          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#155e42] focus:border-[#155e42] outline-none transition-all bg-white"
         />
       </div>
 
@@ -319,7 +320,7 @@ function BookingStepOneForm({
       <div className="md:col-span-2 mt-2">
         <button
           type="submit"
-          className="w-full flex items-center justify-center gap-2 bg-[#14532d] hover:bg-[#15803d] text-white font-semibold py-4 rounded-xl shadow-[0_8px_24px_-4px_rgba(20,83,45,0.45)] hover:shadow-[0_12px_28px_-4px_rgba(20,83,45,0.6)] transition-all text-base sm:text-lg cursor-pointer"
+          className="interactive-btn w-full flex items-center justify-center gap-2 bg-[#155e42] hover:bg-[#0e3f2d] text-white font-semibold py-4 rounded-xl shadow-[0_8px_24px_-4px_rgba(21,94,66,0.45)] hover:shadow-[0_12px_28px_-4px_rgba(21,94,66,0.6)] text-base sm:text-lg"
         >
           <span>Tiếp tục: Chọn vị trí bàn trên sơ đồ</span>
           <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -335,6 +336,7 @@ function BookingStepOneForm({
 export default function BookingPage() {
   const router = useRouter();
   const { bookingInfo, setBookingInfo, isLoaded } = useCart();
+  const { showToast } = useToast();
 
   const todayStr = getVietnamDateString(0);
   const tomorrowStr = getVietnamDateString(1);
@@ -350,19 +352,20 @@ export default function BookingPage() {
       guests: nextData.guests,
       note: nextData.note,
     }));
+    showToast('Đã lưu thông tin đặt bàn! Đang chuyển sang chọn vị trí bàn.', 'success');
     router.push('/booking/diagram');
   };
 
   return (
-    <main className="flex-1 bg-[#faf8f5] text-[#1c1917] flex flex-col min-h-screen">
+    <main className="flex-1 bg-[#f4f7f5] text-[#1c1917] flex flex-col min-h-screen">
       {/* Banner */}
       <div
         className="relative h-[34vh] md:h-[38vh] bg-cover bg-center flex items-center justify-center overflow-hidden"
         style={{ backgroundImage: "url('/foods/hero-bg3.jpg')" }}
       >
-        <div className="absolute inset-0 bg-gradient-to-b from-black/75 via-black/60 to-[#0a1f14]/85" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/75 via-black/60 to-[#0e3f2d]/85" />
         <div className="relative z-10 text-center text-white px-4 mt-4 max-w-3xl mx-auto">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#14532d]/70 border border-[#fbbf24]/40 text-[#fde68a] text-xs font-semibold uppercase tracking-widest mb-3 backdrop-blur-md">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#155e42]/80 border border-[#fbbf24]/40 text-[#fde68a] text-xs font-semibold uppercase tracking-widest mb-3 backdrop-blur-md">
             <span className="w-1.5 h-1.5 rounded-full bg-[#fbbf24]" />
             SmaRes Gastronomy
           </div>
@@ -381,28 +384,28 @@ export default function BookingPage() {
       {/* Nội dung Form */}
       <div className="max-w-7xl mx-auto py-10 px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-3 gap-8 relative z-20 w-full">
         {/* Cột trái: Form điền thông tin (chiếm 2 phần) */}
-        <div className="lg:col-span-2 bg-white rounded-2xl shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] p-8 md:p-10 border border-[#ebe7df]">
+        <div className="lg:col-span-2 bg-white rounded-2xl shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] p-8 md:p-10 border border-[#e2e8e4]">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="text-2xl md:text-3xl font-serif font-bold text-[#14532d]">
+            <h2 className="text-2xl md:text-3xl font-serif font-bold text-[#155e42]">
               1. Thông tin đặt bàn
             </h2>
-            <span className="text-xs sm:text-sm font-semibold px-3.5 py-1 bg-[#f0fdf4] text-[#15803d] rounded-full border border-[#bbf7d0]">
+            <span className="text-xs sm:text-sm font-semibold px-3.5 py-1 bg-[#f0fdf4] text-[#155e42] rounded-full border border-[#bbf7d0]">
               Bước 1 / 4
             </span>
           </div>
-          <p className="text-stone-600 text-sm md:text-base mb-8 pb-4 border-b border-[#ebe7df]">
+          <p className="text-stone-600 text-sm md:text-base mb-8 pb-4 border-b border-[#e2e8e4]">
             Vui lòng điền đầy đủ thông tin bên dưới để SmaRes phục vụ bạn chu đáo nhất
           </p>
 
           {!isLoaded ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-pulse">
-              <div className="h-16 bg-[#f5f2eb] rounded-xl" />
-              <div className="h-16 bg-[#f5f2eb] rounded-xl" />
-              <div className="h-16 bg-[#f5f2eb] rounded-xl" />
-              <div className="h-16 bg-[#f5f2eb] rounded-xl" />
-              <div className="h-16 bg-[#f5f2eb] rounded-xl" />
-              <div className="h-16 bg-[#f5f2eb] rounded-xl" />
-              <div className="md:col-span-2 h-24 bg-[#f5f2eb] rounded-xl" />
+              <div className="h-16 bg-stone-200/70 rounded-xl" />
+              <div className="h-16 bg-stone-200/70 rounded-xl" />
+              <div className="h-16 bg-stone-200/70 rounded-xl" />
+              <div className="h-16 bg-stone-200/70 rounded-xl" />
+              <div className="h-16 bg-stone-200/70 rounded-xl" />
+              <div className="h-16 bg-stone-200/70 rounded-xl" />
+              <div className="md:col-span-2 h-24 bg-stone-200/70 rounded-xl" />
               <div className="md:col-span-2 h-14 bg-[#dcfce7] rounded-xl" />
             </div>
           ) : (
@@ -418,7 +421,7 @@ export default function BookingPage() {
 
         {/* Cột phải: Thông tin thêm (chiếm 1 phần) */}
         <div className="space-y-6">
-          <div className="bg-[#0a1f14] rounded-2xl p-8 text-white shadow-md border border-[#14532d]/40 relative overflow-hidden">
+          <div className="bg-[#0e3f2d] rounded-2xl p-8 text-white shadow-md border border-[#155e42]/40 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-[#fbbf24]/5 rounded-full blur-2xl" />
             <h3 className="text-2xl font-serif font-bold text-[#fbbf24] mb-4">
               SmaRes Gastronomy
@@ -428,7 +431,7 @@ export default function BookingPage() {
             </p>
             <ul className="space-y-4 text-sm text-stone-300">
               <li className="flex items-start gap-3">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#14532d] text-[#fbbf24] shrink-0 border border-[#22c55e]/20">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#155e42] text-[#fbbf24] shrink-0 border border-[#22c55e]/20">
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
                     <circle cx="12" cy="10" r="3" />
@@ -437,7 +440,7 @@ export default function BookingPage() {
                 <span>Quận 1, Thành phố Hồ Chí Minh</span>
               </li>
               <li className="flex items-start gap-3">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#14532d] text-[#fbbf24] shrink-0 border border-[#22c55e]/20">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#155e42] text-[#fbbf24] shrink-0 border border-[#22c55e]/20">
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
                   </svg>
@@ -445,7 +448,7 @@ export default function BookingPage() {
                 <span>Hotline: 1900 1234</span>
               </li>
               <li className="flex items-start gap-3">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#14532d] text-[#fbbf24] shrink-0 border border-[#22c55e]/20">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#155e42] text-[#fbbf24] shrink-0 border border-[#22c55e]/20">
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <circle cx="12" cy="12" r="10" />
                     <polyline points="12 6 12 12 16 14" />
@@ -456,8 +459,8 @@ export default function BookingPage() {
             </ul>
           </div>
 
-          <div className="bg-white rounded-2xl p-7 border border-[#ebe7df] shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)]">
-            <h3 className="text-[#14532d] font-serif font-bold mb-4 text-xl">
+          <div className="bg-white rounded-2xl p-7 border border-[#e2e8e4] shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)]">
+            <h3 className="text-[#155e42] font-serif font-bold mb-4 text-xl">
               Quy trình 4 bước tiện lợi
             </h3>
             <ol className="text-sm text-stone-700 space-y-3.5 list-decimal pl-5 leading-relaxed">

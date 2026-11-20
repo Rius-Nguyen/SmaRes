@@ -212,7 +212,9 @@ export default function BookingConfirmPage() {
       !bookingInfo.time ||
       !bookingInfo.phone
     ) {
-      setErrorMsg('Thiếu thông tin đặt bàn bắt buộc. Vui lòng kiểm tra lại từ Bước 1.');
+      const msg = 'Thiếu thông tin đặt bàn bắt buộc. Vui lòng kiểm tra lại từ Bước 1.';
+      setErrorMsg(msg);
+      showToast(msg, 'warning');
       return;
     }
 
@@ -288,7 +290,6 @@ export default function BookingConfirmPage() {
         const resData = (await resResponse.json()) as ReservationApiResponse;
 
         if (!resResponse.ok || !resData.success || !resData.data) {
-          // Nhả khóa ngay nếu tạo đơn thất bại
           await releaseLockSafely({
             tableId: resolvedTableId,
             date: bookingInfo.date,
@@ -324,7 +325,6 @@ export default function BookingConfirmPage() {
           orderSubmitted: false,
         };
 
-        // Gắn reservationId vào Distributed Lock hiện hành
         try {
           const bindRes = await fetch('/api/table-locks', {
             method: 'POST',
@@ -376,12 +376,12 @@ export default function BookingConfirmPage() {
           } catch {
             // Bỏ qua lỗi sessionStorage
           }
+          const msg = orderData.message
+            ? `Đơn bàn (${reservationSnapshot.bookingCode}) đang giữ chỗ, nhưng thực đơn đặt trước gặp lỗi: ${orderData.message}.`
+            : `Đơn bàn (${reservationSnapshot.bookingCode}) đang giữ chỗ, nhưng không thể gửi thực đơn đặt trước.`;
           setErrorActionTarget('menu');
-          setErrorMsg(
-            orderData.message
-              ? `Đơn bàn (${reservationSnapshot.bookingCode}) đang giữ chỗ, nhưng thực đơn đặt trước gặp lỗi: ${orderData.message}.`
-              : `Đơn bàn (${reservationSnapshot.bookingCode}) đang giữ chỗ, nhưng không thể gửi thực đơn đặt trước.`
-          );
+          setErrorMsg(msg);
+          showToast(msg, 'warning');
           setIsSubmitting(false);
           return;
         }
@@ -477,7 +477,7 @@ export default function BookingConfirmPage() {
       clearCart();
       clearBookingInfo();
       showToast(
-        `Đã ghi nhận yêu cầu đặt cọc ${formatMoney(amountPaid)}. Vui lòng lưu mã đặt bàn!`,
+        `Đặt bàn thành công! Đã ghi nhận tiền cọc ${formatMoney(amountPaid)}.`,
         'success'
       );
 
@@ -492,28 +492,41 @@ export default function BookingConfirmPage() {
     [depositSession, clearCart, clearBookingInfo, showToast, router]
   );
 
+  if (!isLoaded && !depositSession && !isRedirecting) {
+    return (
+      <main className="flex-1 bg-[#f4f7f5] text-[#1c1917] flex flex-col min-h-screen pb-20">
+        <BookingStepper currentStep={4} />
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 w-full space-y-6 animate-pulse">
+          <div className="h-24 bg-white rounded-2xl border border-[#e2e8e4]" />
+          <div className="h-48 bg-white rounded-2xl border border-[#e2e8e4]" />
+          <div className="h-44 bg-white rounded-2xl border border-[#e2e8e4]" />
+        </div>
+      </main>
+    );
+  }
+
   if (isLoaded && !hasActiveBooking && !depositSession && !isRedirecting) {
     return (
-      <main className="flex-1 bg-[#FAF8F5] text-[#1C1917] flex flex-col min-h-screen">
+      <main className="flex-1 bg-[#f4f7f5] text-[#1c1917] flex flex-col min-h-screen">
         <BookingStepper currentStep={4} />
         <div className="max-w-xl mx-auto my-auto py-16 px-4 text-center">
-          <div className="bg-white rounded-3xl p-8 shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] border border-[#EBE7DF]">
-            <div className="w-14 h-14 rounded-full bg-[#FEF3C7] text-[#D97706] flex items-center justify-center mx-auto mb-4 border border-[#FDE68A]">
+          <div className="bg-white rounded-2xl p-8 shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] border border-[#e2e8e4]">
+            <div className="w-14 h-14 rounded-full bg-[#fef3c7] text-[#d97706] flex items-center justify-center mx-auto mb-4 border border-[#fde68a]">
               <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                 <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
                 <line x1="12" y1="9" x2="12" y2="13" />
                 <line x1="12" y1="17" x2="12.01" y2="17" />
               </svg>
             </div>
-            <h1 className="text-2xl font-serif font-bold text-[#1C1917] mb-2">
+            <h1 className="text-2xl font-serif font-bold text-[#1c1917] mb-2">
               Chưa có thông tin đặt bàn
             </h1>
-            <p className="text-[#57534E] text-sm mb-6">
+            <p className="text-stone-600 text-sm mb-6">
               Vui lòng hoàn thành thông tin bàn trước khi xem trang xác nhận.
             </p>
             <Link
               href="/booking"
-              className="inline-flex items-center gap-2 bg-[#14532D] hover:bg-[#15803D] text-white font-semibold px-6 py-3 rounded-xl shadow-xs text-sm transition-all"
+              className="interactive-btn inline-flex items-center gap-2 bg-[#155e42] hover:bg-[#0e3f2d] text-white font-semibold px-6 py-3 rounded-xl shadow-xs text-sm"
             >
               <span>← Quay lại Bước 1</span>
             </Link>
@@ -524,41 +537,41 @@ export default function BookingConfirmPage() {
   }
 
   return (
-    <main className="flex-1 bg-[#FAF8F5] text-[#1C1917] flex flex-col min-h-screen pb-20">
+    <main className="flex-1 bg-[#f4f7f5] text-[#1c1917] flex flex-col min-h-screen pb-20">
       <BookingStepper currentStep={4} />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 w-full">
         {/* Tiêu đề trang */}
         <div className="text-center mb-8">
-          <span className="text-xs font-bold uppercase tracking-wider text-[#15803D] bg-[#F0FDF4] px-3.5 py-1.5 rounded-full border border-[#BBF7D0] inline-block mb-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-[#155e42] bg-[#f0fdf4] px-3.5 py-1.5 rounded-full border border-[#bbf7d0] inline-block mb-2">
             Bước 4 / 4 - Xác nhận &amp; Đặt cọc
           </span>
-          <h1 className="text-3xl md:text-4xl font-serif font-bold text-[#1C1917]">
+          <h1 className="text-3xl md:text-4xl font-serif font-bold text-[#1c1917]">
             Xác Nhận Đặt Bàn &amp; Thực Đơn
           </h1>
-          <p className="text-sm md:text-base text-[#57534E] mt-2 max-w-lg mx-auto leading-relaxed">
+          <p className="text-sm md:text-base text-stone-600 mt-2 max-w-lg mx-auto leading-relaxed">
             Vui lòng kiểm tra lại thông tin bàn, thực đơn và mức tiền cọc giữ chỗ trước khi thanh toán tại SmaRes.
           </p>
         </div>
 
         <div className="space-y-6">
           {/* KHỐI 1: THÔNG TIN BÀN ĂN */}
-          <div className="bg-white rounded-2xl shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] border border-[#EBE7DF] p-6 md:p-8">
-            <div className="flex items-center justify-between border-b border-[#EBE7DF] pb-4 mb-5">
+          <div className="bg-white rounded-2xl shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] border border-[#e2e8e4] p-6 md:p-8">
+            <div className="flex items-center justify-between border-b border-[#e2e8e4] pb-4 mb-5">
               <div className="flex items-center gap-2.5">
-                <span className="w-9 h-9 rounded-xl bg-[#F0FDF4] text-[#14532D] flex items-center justify-center font-bold text-base border border-[#BBF7D0]">
+                <span className="w-9 h-9 rounded-xl bg-[#f0fdf4] text-[#155e42] flex items-center justify-center font-bold text-base border border-[#bbf7d0]">
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                     <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
                     <circle cx="12" cy="10" r="3" />
                   </svg>
                 </span>
-                <h2 className="font-serif font-bold text-xl text-[#14532D]">
+                <h2 className="font-serif font-bold text-xl text-[#155e42]">
                   1. Chi tiết Bàn &amp; Thời gian
                 </h2>
               </div>
               <Link
                 href="/booking/diagram"
-                className="text-xs sm:text-sm font-semibold text-[#14532D] hover:text-[#15803D] flex items-center gap-1 transition-colors"
+                className="text-xs sm:text-sm font-semibold text-[#155e42] hover:text-[#0e3f2d] flex items-center gap-1 transition-colors"
               >
                 <span>Sửa vị trí bàn</span>
                 <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -568,60 +581,60 @@ export default function BookingConfirmPage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 text-sm">
-              <div className="bg-[#FAF8F5] p-4 rounded-xl border border-[#EBE7DF]">
-                <p className="text-xs text-[#78716C] mb-1">Vị trí bàn ăn</p>
-                <p className="font-serif font-bold text-[#1C1917] text-lg">
+              <div className="bg-[#f4f7f5] p-4 rounded-xl border border-[#e2e8e4]">
+                <p className="text-xs text-stone-500 mb-1">Vị trí bàn ăn</p>
+                <p className="font-serif font-bold text-[#1c1917] text-lg">
                   Bàn {bookingInfo?.tableNumber}{' '}
                   {bookingInfo?.tableType && (
-                    <span className="text-xs font-semibold text-[#15803D] bg-[#F0FDF4] px-2.5 py-0.5 rounded-full ml-1 border border-[#BBF7D0]">
+                    <span className="text-xs font-semibold text-[#155e42] bg-[#f0fdf4] px-2.5 py-0.5 rounded-full ml-1 border border-[#bbf7d0]">
                       {bookingInfo.tableType}
                     </span>
                   )}
                 </p>
-                <p className="text-xs text-[#78716C] mt-1">
+                <p className="text-xs text-stone-500 mt-1">
                   Sức chứa: {tableCapacityCount} chỗ ngồi
                 </p>
               </div>
 
-              <div className="bg-[#FAF8F5] p-4 rounded-xl border border-[#EBE7DF]">
-                <p className="text-xs text-[#78716C] mb-1">Thời gian dùng bữa</p>
-                <p className="font-serif font-bold text-[#1C1917] text-lg">{bookingInfo?.time}</p>
-                <p className="text-xs text-[#78716C] mt-1">Ngày: {bookingInfo?.date}</p>
+              <div className="bg-[#f4f7f5] p-4 rounded-xl border border-[#e2e8e4]">
+                <p className="text-xs text-stone-500 mb-1">Thời gian dùng bữa</p>
+                <p className="font-serif font-bold text-[#1c1917] text-lg">{bookingInfo?.time}</p>
+                <p className="text-xs text-stone-500 mt-1">Ngày: {bookingInfo?.date}</p>
               </div>
 
-              <div className="bg-[#FAF8F5] p-4 rounded-xl border border-[#EBE7DF] sm:col-span-2 lg:col-span-1">
-                <p className="text-xs text-[#78716C] mb-1">Khách hàng đặt bàn</p>
-                <p className="font-serif font-bold text-[#1C1917] text-lg">{bookingInfo?.name}</p>
-                <p className="text-xs text-[#78716C] mt-1">
+              <div className="bg-[#f4f7f5] p-4 rounded-xl border border-[#e2e8e4] sm:col-span-2 lg:col-span-1">
+                <p className="text-xs text-stone-500 mb-1">Khách hàng đặt bàn</p>
+                <p className="font-serif font-bold text-[#1c1917] text-lg">{bookingInfo?.name}</p>
+                <p className="text-xs text-stone-500 mt-1">
                   SĐT: {bookingInfo?.phone} • {guestsCount} người
                 </p>
               </div>
             </div>
 
             {bookingInfo?.note && (
-              <div className="mt-4 p-3.5 bg-[#FFFBEB] rounded-xl border border-[#FDE68A] text-xs sm:text-sm text-[#57534E]">
-                <strong className="text-[#92400E] font-semibold">Ghi chú cho nhà hàng: </strong>
+              <div className="mt-4 p-3.5 bg-[#fffbeb] rounded-xl border border-[#fde68a] text-xs sm:text-sm text-stone-600">
+                <strong className="text-[#92400e] font-semibold">Ghi chú cho nhà hàng: </strong>
                 <span>&ldquo;{bookingInfo.note}&rdquo;</span>
               </div>
             )}
           </div>
 
           {/* KHỐI 2: THỰC ĐƠN ĐẶT TRƯỚC */}
-          <div className="bg-white rounded-2xl shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] border border-[#EBE7DF] p-6 md:p-8">
-            <div className="flex items-center justify-between border-b border-[#EBE7DF] pb-4 mb-5">
+          <div className="bg-white rounded-2xl shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] border border-[#e2e8e4] p-6 md:p-8">
+            <div className="flex items-center justify-between border-b border-[#e2e8e4] pb-4 mb-5">
               <div className="flex items-center gap-2.5">
-                <span className="w-9 h-9 rounded-xl bg-[#F0FDF4] text-[#14532D] flex items-center justify-center font-bold text-base border border-[#BBF7D0]">
+                <span className="w-9 h-9 rounded-xl bg-[#f0fdf4] text-[#155e42] flex items-center justify-center font-bold text-base border border-[#bbf7d0]">
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                     <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2" />
                     <path d="M7 2v20" />
                     <path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7" />
                   </svg>
                 </span>
-                <h2 className="font-serif font-bold text-xl text-[#14532D]">2. Thực đơn Đặt trước</h2>
+                <h2 className="font-serif font-bold text-xl text-[#155e42]">2. Thực đơn Đặt trước</h2>
               </div>
               <Link
                 href="/booking/menu"
-                className="text-xs sm:text-sm font-semibold text-[#14532D] hover:text-[#15803D] flex items-center gap-1 transition-colors"
+                className="text-xs sm:text-sm font-semibold text-[#155e42] hover:text-[#0e3f2d] flex items-center gap-1 transition-colors"
               >
                 <span>{cart.length > 0 ? 'Sửa món ăn' : '+ Chọn thêm món'}</span>
                 <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -631,22 +644,22 @@ export default function BookingConfirmPage() {
             </div>
 
             {cart.length === 0 ? (
-              <div className="p-8 bg-[#FAF8F5] rounded-2xl border border-[#EBE7DF] text-center">
-                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto text-xl shadow-xs mb-3 text-[#78716C] border border-[#EBE7DF]">
+              <div className="p-8 bg-[#f4f7f5] rounded-2xl border border-[#e2e8e4] text-center">
+                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto text-xl shadow-xs mb-3 text-stone-500 border border-[#e2e8e4]">
                   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                     <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
                     <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
                   </svg>
                 </div>
-                <h3 className="font-serif font-bold text-[#1C1917] text-base">
+                <h3 className="font-serif font-bold text-[#1c1917] text-base">
                   Không chọn món ăn trước
                 </h3>
-                <p className="text-xs sm:text-sm text-[#57534E] mt-1 max-w-md mx-auto leading-relaxed">
+                <p className="text-xs sm:text-sm text-stone-600 mt-1 max-w-md mx-auto leading-relaxed">
                   Quý khách đã chọn bước gọi món trực tiếp tại nhà hàng. Đội ngũ nhân viên sẽ phục vụ menu chi tiết ngay khi quý khách ngồi vào bàn.
                 </p>
                 <Link
                   href="/booking/menu"
-                  className="mt-4 inline-flex items-center gap-1 text-xs sm:text-sm font-semibold text-[#14532D] hover:text-[#15803D] underline decoration-[#14532D]/40 underline-offset-4"
+                  className="mt-4 inline-flex items-center gap-1 text-xs sm:text-sm font-semibold text-[#155e42] hover:text-[#0e3f2d] underline decoration-[#155e42]/40 underline-offset-4"
                 >
                   <span>Muốn chọn món trước để bếp trưởng chuẩn bị sẵn? Nhấp vào đây</span>
                   <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -657,7 +670,7 @@ export default function BookingConfirmPage() {
               </div>
             ) : (
               <div>
-                <div className="divide-y divide-[#EBE7DF]">
+                <div className="divide-y divide-[#e2e8e4]">
                   {cart.map((item, idx) => (
                     <div key={item.cartKey || `${item._id}-${idx}`} className="py-4 flex items-center justify-between gap-4">
                       <div className="flex items-center gap-3.5">
@@ -667,27 +680,27 @@ export default function BookingConfirmPage() {
                           width={64}
                           height={64}
                           unoptimized
-                          className="w-16 h-16 rounded-xl object-cover border border-[#EBE7DF] shrink-0"
+                          className="w-16 h-16 rounded-xl object-cover border border-[#e2e8e4] shrink-0"
                         />
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <h4 className="font-serif font-bold text-base text-[#1C1917]">{item.name}</h4>
+                            <h4 className="font-serif font-bold text-base text-[#1c1917]">{item.name}</h4>
                             {item.isPreOrderOnly && (
-                              <span className="text-[11px] bg-[#FFFBEB] text-[#92400E] font-semibold px-2 py-0.5 rounded-full border border-[#FDE68A] flex items-center gap-1">
-                                <svg className="w-3 h-3 text-[#D97706]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                              <span className="text-[11px] bg-[#fffbeb] text-[#92400e] font-semibold px-2 py-0.5 rounded-full border border-[#fde68a] flex items-center gap-1">
+                                <svg className="w-3 h-3 text-[#d97706]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                                   <path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14" />
                                 </svg>
                                 <span>Món đặc biệt</span>
                               </span>
                             )}
                           </div>
-                          <p className="text-xs sm:text-sm text-[#57534E] mt-1">
+                          <p className="text-xs sm:text-sm text-stone-600 mt-1">
                             {formatMoney(item.price)} × {item.quantity} phần
                           </p>
                         </div>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="font-serif font-bold text-base text-[#D97706]">
+                        <p className="font-serif font-bold text-base text-[#d97706]">
                           {formatMoney(item.price * item.quantity)}
                         </p>
                       </div>
@@ -696,8 +709,8 @@ export default function BookingConfirmPage() {
                 </div>
 
                 {hasSpecialItems && (
-                  <div className="mt-4 p-3.5 bg-[#FFFBEB] rounded-xl border border-[#FDE68A] text-xs sm:text-sm text-[#92400E] flex items-center gap-2">
-                    <svg className="w-4 h-4 text-[#D97706] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <div className="mt-4 p-3.5 bg-[#fffbeb] rounded-xl border border-[#fde68a] text-xs sm:text-sm text-[#92400e] flex items-center gap-2">
+                    <svg className="w-4 h-4 text-[#d97706] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                       <path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14" />
                     </svg>
                     <span>
@@ -706,38 +719,38 @@ export default function BookingConfirmPage() {
                   </div>
                 )}
 
-                <div className="border-t border-[#EBE7DF] mt-6 pt-4 flex items-center justify-between text-base sm:text-lg">
-                  <span className="font-semibold text-[#1C1917]">Tổng tiền thực đơn đặt trước:</span>
-                  <span className="font-serif font-bold text-[#D97706] text-2xl">{formatMoney(totalPrice)}</span>
+                <div className="border-t border-[#e2e8e4] mt-6 pt-4 flex items-center justify-between text-base sm:text-lg">
+                  <span className="font-semibold text-[#1c1917]">Tổng tiền thực đơn đặt trước:</span>
+                  <span className="font-serif font-bold text-[#d97706] text-2xl">{formatMoney(totalPrice)}</span>
                 </div>
               </div>
             )}
           </div>
 
           {/* KHỐI 3: TIỀN ĐẶT CỌC & QUY ĐỊNH GIỮ BÀN */}
-          <div className="bg-white rounded-2xl shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] border border-[#EBE7DF] p-6 md:p-8 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#EBE7DF]">
+          <div className="bg-white rounded-2xl shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] border border-[#e2e8e4] p-6 md:p-8 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#e2e8e4]">
               <div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-[#92400E] bg-[#FFFBEB] px-2.5 py-1 rounded-full border border-[#FDE68A] inline-block mb-1">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#92400e] bg-[#fffbeb] px-2.5 py-1 rounded-full border border-[#fde68a] inline-block mb-1">
                   Quy định đặt cọc (BR-RES-07)
                 </span>
-                <h2 className="font-serif font-bold text-xl text-[#14532D]">
+                <h2 className="font-serif font-bold text-xl text-[#155e42]">
                   3. Tiền Cọc Giữ Chỗ Trực Tuyến
                 </h2>
               </div>
               <div className="text-left sm:text-right">
-                <p className="text-xs text-[#78716C]">Số tiền cần thanh toán</p>
-                <p className="font-serif font-bold text-2xl text-[#D97706]">
+                <p className="text-xs text-stone-500">Số tiền cần thanh toán</p>
+                <p className="font-serif font-bold text-2xl text-[#d97706]">
                   {formatMoney(depositPreview.amount)}
                 </p>
               </div>
             </div>
 
-            <div className="bg-[#F0FDF4] rounded-xl border border-[#BBF7D0] p-4 text-xs sm:text-sm text-[#14532D] space-y-1.5">
-              <ul className="list-disc pl-5 space-y-1.5 text-[#57534E] leading-relaxed">
+            <div className="bg-[#f0fdf4] rounded-xl border border-[#bbf7d0] p-4 text-xs sm:text-sm text-[#155e42] space-y-1.5">
+              <ul className="list-disc pl-5 space-y-1.5 text-stone-600 leading-relaxed">
                 <li>
                   Mức cọc áp dụng:{' '}
-                  <strong className="text-[#14532D]">
+                  <strong className="text-[#155e42]">
                     {depositPreview.depositTier === 'VIP_OR_LARGE'
                       ? 'Phòng VIP / Bàn tiệc lớn (300.000đ hoặc 20% thực đơn đặt trước)'
                       : 'Bàn tiêu chuẩn (100.000đ)'}
@@ -790,7 +803,7 @@ export default function BookingConfirmPage() {
           <div className="pt-3 flex flex-col sm:flex-row items-center gap-4">
             <Link
               href="/booking/menu"
-              className="w-full sm:w-auto text-center font-semibold text-[#57534E] hover:text-[#1C1917] px-6 py-4 rounded-xl border border-[#D6D0C4] hover:bg-stone-100 text-sm transition-colors"
+              className="interactive-btn w-full sm:w-auto text-center font-semibold text-stone-600 hover:text-[#1c1917] px-6 py-4 rounded-xl border border-[#d6d0c4] hover:bg-stone-100 text-sm"
             >
               ← Quay lại chọn món
             </Link>
@@ -799,10 +812,10 @@ export default function BookingConfirmPage() {
               type="button"
               onClick={handleOpenDepositModal}
               disabled={isSubmitting}
-              className="flex-1 w-full bg-[#14532D] hover:bg-[#15803D] disabled:opacity-70 text-white font-semibold py-4 rounded-xl shadow-[0_8px_24px_-4px_rgba(20,83,45,0.45)] hover:shadow-[0_12px_28px_-4px_rgba(20,83,45,0.6)] text-base sm:text-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="interactive-btn flex-1 w-full bg-[#155e42] hover:bg-[#0e3f2d] disabled:opacity-70 text-white font-semibold py-4 rounded-xl shadow-[0_8px_24px_-4px_rgba(21,94,66,0.45)] hover:shadow-[0_12px_28px_-4px_rgba(21,94,66,0.6)] text-base sm:text-lg flex items-center justify-center gap-2"
             >
               {isSubmitting ? (
-                <span>Đang giữ khóa bàn &amp; chuẩn bị thanh toán...</span>
+                <span className="animate-pulse">Đang giữ khóa bàn &amp; chuẩn bị thanh toán...</span>
               ) : (
                 <>
                   <span>
