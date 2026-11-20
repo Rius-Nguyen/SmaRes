@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Types } from 'mongoose';
 import connectDB from '@/app/lib/db';
-import { getAuthUser } from '@/app/lib/auth';
+import { checkBookingAccess } from '@/app/lib/bookingRoleGuard';
 import { parseVietnamDateTime } from '@/app/lib/reservationHelpers';
 import {
   acquireTableLock,
@@ -97,6 +97,11 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const roleCheck = checkBookingAccess(request);
+    if (roleCheck.errorResponse) {
+      return roleCheck.errorResponse;
+    }
+    const authUser = roleCheck.user;
     let rawBody: unknown;
     try {
       rawBody = await request.json();
@@ -185,15 +190,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const user = getAuthUser(request);
-
     const lockResult = await acquireTableLock({
       tableId: String(table._id),
       tableNumber: table.tableNumber || tableNumber,
       date,
       time,
       sessionId: sessionId || undefined,
-      userId: user?.userId ?? null,
+      userId: authUser?.userId ?? null,
       reservationId: reservationId || null,
     });
 

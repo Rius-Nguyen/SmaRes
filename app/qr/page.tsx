@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useAuthSession } from '@/app/lib/useAuthSession';
 
 interface QrSessionData {
   tableId?: string;
@@ -23,6 +24,7 @@ interface QrSessionResponse {
 }
 
 function QrTableContent() {
+  const { isAdmin } = useAuthSession();
   const searchParams = useSearchParams();
   const initialTable = (searchParams.get('tableId') || 'B05').toUpperCase();
   const initialStatus = searchParams.get('status') || 'Occupied';
@@ -154,12 +156,18 @@ function QrTableContent() {
                 🍽️ Vào thực đơn gọi thêm món
               </Link>
             ) : statusNormalized === 'available' ? (
-              <Link
-                href={`/booking?tableId=${encodeURIComponent(tableId)}`}
-                className="block w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition shadow-sm"
-              >
-                🪑 Đặt bàn / Nhận bàn {tableId}
-              </Link>
+              !isAdmin ? (
+                <Link
+                  href={`/booking?tableId=${encodeURIComponent(tableId)}`}
+                  className="block w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition shadow-sm"
+                >
+                  🪑 Đặt bàn / Nhận bàn {tableId}
+                </Link>
+              ) : (
+                <p className="text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-xl py-3 px-4">
+                  Bàn {tableId} đang trống. Tài khoản Quản trị viên (Admin) không sử dụng chức năng đặt bàn.
+                </p>
+              )
             ) : (
               <button
                 type="button"

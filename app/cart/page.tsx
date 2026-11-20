@@ -200,7 +200,8 @@ function CartContent() {
   const phoneValue = phoneDraft ?? (bookingInfo?.phone || userProfile?.phone || '');
   const notesValue = notesDraft ?? (bookingInfo?.note || '');
 
-  const isOrderUnlocked = qrState.canOrder === true || hasActiveBooking;
+  const isAdmin = userProfile?.role === 'admin';
+  const isOrderUnlocked = qrState.canOrder === true || (hasActiveBooking && !isAdmin);
 
   // Kiểm tra phiên đăng nhập từ HttpOnly cookie
   useEffect(() => {
@@ -483,16 +484,21 @@ function CartContent() {
                 <p className="text-xs sm:text-sm text-[#15803d] font-medium">
                   Bàn <strong>{qrState.tableNumber}</strong> ({qrState.zoneName}) đang phục vụ — Khách: {qrState.customerName}. Quý khách có thể gửi đơn trực tiếp xuống Bếp.
                 </p>
-              ) : hasActiveBooking && bookingInfo ? (
+              ) : hasActiveBooking && bookingInfo && !isAdmin ? (
                 <p className="text-xs sm:text-sm text-[#15803d] font-medium">
                   Đang áp dụng thông tin đặt bàn trước: <strong>Bàn {bookingInfo.tableNumber}</strong> ({bookingInfo.date} lúc {bookingInfo.time}) — {bookingInfo.name}.
                 </p>
               ) : (
                 <p className="text-xs sm:text-sm text-[#57534e]">
-                  Nhập số bàn trên mã QR tại bàn (ví dụ: B01, B05) để gọi món ngay không cần đăng nhập, hoặc{' '}
-                  <Link href="/booking" className="text-[#14532d] font-semibold underline hover:text-[#15803d]">
-                    đặt bàn trước
-                  </Link>
+                  Nhập số bàn trên mã QR tại bàn (ví dụ: B01, B05) để gọi món ngay không cần đăng nhập
+                  {!isAdmin && (
+                    <>
+                      , hoặc{' '}
+                      <Link href="/booking" className="text-[#14532d] font-semibold underline hover:text-[#15803d]">
+                        đặt bàn trước
+                      </Link>
+                    </>
+                  )}
                   .
                 </p>
               )}
@@ -761,15 +767,19 @@ function CartContent() {
               {!isOrderUnlocked && (
                 <div className="mb-4 p-3.5 rounded-xl bg-[#fffbeb] border border-[#fde68a] text-xs text-[#92400e] space-y-2">
                   <p className="font-semibold">
-                    Vui lòng xác nhận số bàn đang phục vụ (QR tại bàn) hoặc đặt bàn trước để mở khóa nút gửi đơn.
+                    {isAdmin
+                      ? 'Vui lòng xác nhận số bàn đang phục vụ (QR tại bàn) để mở khóa nút gửi đơn.'
+                      : 'Vui lòng xác nhận số bàn đang phục vụ (QR tại bàn) hoặc đặt bàn trước để mở khóa nút gửi đơn.'}
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    <Link
-                      href="/booking"
-                      className="inline-flex items-center font-semibold text-[#14532d] hover:underline"
-                    >
-                      Đặt bàn ngay →
-                    </Link>
+                    {!isAdmin && (
+                      <Link
+                        href="/booking"
+                        className="inline-flex items-center font-semibold text-[#14532d] hover:underline"
+                      >
+                        Đặt bàn ngay →
+                      </Link>
+                    )}
                     {!userProfile && (
                       <Link
                         href="/login?redirect=/cart"

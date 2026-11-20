@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     const { email, password } = body;
 
     // 1. Kiểm tra đầu vào
-    if (!email || !password) {
+    if (typeof email !== 'string' || typeof password !== 'string' || !email.trim() || !password) {
       return NextResponse.json(
         { success: false, message: 'Vui lòng nhập đầy đủ email và mật khẩu.' },
         { status: 400 }
@@ -27,10 +27,13 @@ export async function POST(request: Request) {
     const normalizedInput = email.toLowerCase().trim();
     const targetEmail = normalizedInput === 'admin' ? 'admin@smares.com' : normalizedInput;
 
-    // 2. Tìm người dùng theo email (hỗ trợ nhập 'admin' hoặc email đầy đủ)
+    // 2. Tìm người dùng theo email hoặc tên tài khoản (username)
     let user = await User.findOne({ email: targetEmail });
     if (!user && normalizedInput !== targetEmail) {
       user = await User.findOne({ email: normalizedInput });
+    }
+    if (!user && !normalizedInput.includes('@')) {
+      user = await User.findOne({ username: normalizedInput });
     }
     if (!user) {
       return NextResponse.json(

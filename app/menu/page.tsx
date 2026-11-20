@@ -9,10 +9,12 @@ import DishCard from '@/components/menu/DishCard';
 import { DishSkeletonCard } from '@/components/ui/SkeletonCard';
 import SpecialDishModal from '@/components/menu/SpecialDishModal';
 import { useToast } from '@/components/ui/Toast';
+import { useAuthSession } from '@/app/lib/useAuthSession';
 
 export default function MenuPage() {
   const { cart, addToCart, totalItems, totalPrice, hasActiveBooking, bookingInfo } = useCart();
   const { showToast } = useToast();
+  const { isAdmin } = useAuthSession();
 
   const [activeCategory, setActiveCategory] = useState<string>('Tất cả');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -113,8 +115,9 @@ export default function MenuPage() {
         </div>
       </div>
 
-      {/* Thông báo trạng thái đặt bàn nếu có */}
-      {hasActiveBooking ? (
+      {/* Thông báo trạng thái đặt bàn nếu có (ẩn với tài khoản Admin) */}
+      {!isAdmin && (
+        hasActiveBooking ? (
         <div className="bg-[#f0fdf4] border-b border-[#bbf7d0] py-3 px-4 shadow-xs">
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs sm:text-sm">
             <div className="flex items-start sm:items-center gap-2.5 text-[#155e42]">
@@ -165,7 +168,7 @@ export default function MenuPage() {
             </Link>
           </div>
         </div>
-      )}
+      ))}
 
       {/* Thanh danh mục & Ô tìm kiếm */}
       <div className="py-3.5 sm:py-4 border-b border-[#e2e8e4] sticky top-16 bg-[#f4f7f5]/95 backdrop-blur-md z-20 shadow-xs">
@@ -295,7 +298,7 @@ export default function MenuPage() {
         <div className="fixed bottom-5 right-4 sm:bottom-6 sm:right-6 z-40">
           <Link
             key={cartPopKey}
-            href={hasActiveBooking ? '/booking/menu' : '/cart'}
+            href={hasActiveBooking && !isAdmin ? '/booking/menu' : '/cart'}
             className="animate-cart-pop interactive-btn flex items-center gap-3 bg-[#155e42] hover:bg-[#0e3f2d] text-white px-4 sm:px-5 py-3 sm:py-3.5 rounded-full shadow-[0_12px_32px_-4px_rgba(21,94,66,0.45)] ring-4 ring-[#dcfce7] border border-emerald-500/30"
           >
             <div className="relative">

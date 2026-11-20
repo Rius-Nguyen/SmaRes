@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useAuthSession } from '@/app/lib/useAuthSession';
 
 type ReservationStatus = 'CONFIRMED' | 'CHECKED_IN' | 'COMPLETED' | 'CANCELLED';
 type StatusFilter = 'ALL' | ReservationStatus;
@@ -68,6 +69,7 @@ function formatDateVi(dateStr: string): string {
 }
 
 export default function HistoryPage() {
+  const { isAdmin } = useAuthSession();
   const [reservations, setReservations] = useState<ReservationRecord[]>([]);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [loading, setLoading] = useState<boolean>(true);
@@ -268,16 +270,18 @@ export default function HistoryPage() {
                 </select>
               </div>
 
-              <Link
-                href="/booking"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#14532d] hover:bg-[#15803d] text-white text-xs sm:text-sm font-semibold transition-colors"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 5v14" />
-                  <path d="M5 12h14" />
-                </svg>
-                <span>Đặt bàn mới</span>
-              </Link>
+              {!isAdmin && (
+                <Link
+                  href="/booking"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#14532d] hover:bg-[#15803d] text-white text-xs sm:text-sm font-semibold transition-colors"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 5v14" />
+                    <path d="M5 12h14" />
+                  </svg>
+                  <span>Đặt bàn mới</span>
+                </Link>
+              )}
             </div>
           </div>
 
@@ -375,12 +379,14 @@ export default function HistoryPage() {
                   : 'Thử chọn trạng thái khác để xem các đơn đặt bàn của bạn.'}
               </p>
               {reservations.length === 0 ? (
-                <Link
-                  href="/booking"
-                  className="inline-flex items-center gap-2 bg-[#14532d] hover:bg-[#15803d] text-white px-6 py-3 rounded-xl text-sm font-semibold transition-colors shadow-[0_8px_24px_-4px_rgba(20,83,45,0.35)]"
-                >
-                  <span>Đặt bàn ngay</span>
-                </Link>
+                !isAdmin ? (
+                  <Link
+                    href="/booking"
+                    className="inline-flex items-center gap-2 bg-[#14532d] hover:bg-[#15803d] text-white px-6 py-3 rounded-xl text-sm font-semibold transition-colors shadow-[0_8px_24px_-4px_rgba(20,83,45,0.35)]"
+                  >
+                    <span>Đặt bàn ngay</span>
+                  </Link>
+                ) : null
               ) : (
                 <button
                   type="button"

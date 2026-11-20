@@ -4,7 +4,8 @@ import connectDB from '@/app/lib/db';
 import { generateBookingCode, parseVietnamDateTime } from '@/app/lib/reservationHelpers';
 import Table from '@/app/models/Table';
 import Reservation, { ReservationStatus } from '@/app/models/Reservation';
-import { getAuthUser, requireAuth } from '@/app/lib/auth';
+import { requireAuth } from '@/app/lib/auth';
+import { checkBookingAccess } from '@/app/lib/bookingRoleGuard';
 
 export const dynamic = 'force-dynamic';
 
@@ -121,9 +122,13 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await connectDB();
+    const roleCheck = checkBookingAccess(request);
+    if (roleCheck.errorResponse) {
+      return roleCheck.errorResponse;
+    }
+    const user = roleCheck.user;
 
-    const user = getAuthUser(request);
+    await connectDB();
 
     let rawBody: unknown;
     try {

@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { Types } from 'mongoose';
 import connectDB from '@/app/lib/db';
-import { getAuthUser } from '@/app/lib/auth';
+import { checkBookingAccess } from '@/app/lib/bookingRoleGuard';
 import { acquireTableLock } from '@/app/lib/tableLockService';
 import {
   getVnpayConfig,
@@ -48,6 +48,11 @@ function parsePreOrderItems(raw: unknown): PreOrderItemInput[] {
 
 export async function POST(request: NextRequest) {
   try {
+    const roleCheck = checkBookingAccess(request);
+    if (roleCheck.errorResponse) {
+      return roleCheck.errorResponse;
+    }
+    const authUser = roleCheck.user;
     let rawBody: unknown;
     try {
       rawBody = await request.json();
@@ -181,8 +186,6 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
-
-    const authUser = getAuthUser(request);
 
     // 1. Xin / gia hạn Distributed Lock (TK-129) với TTL đúng 10 phút (600s)
     const lockResult = await acquireTableLock({
