@@ -2,16 +2,52 @@
 
 import { useState, useEffect } from 'react';
 
+interface EmailTestDetails {
+  bookingId: string;
+  customerName: string;
+  tableId: string;
+  bookingTime: string;
+  guests: number;
+  depositAmount: number;
+}
+
+interface EmailTestResult {
+  clientMs: number;
+  withinOneMinuteSLA?: boolean;
+  email?: {
+    to?: string;
+    details?: EmailTestDetails;
+  };
+}
+
+const INITIAL_EMAIL_TEST_PAYLOAD = {
+  customerEmail: 'thanhhai@gmail.com',
+  customerName: 'Thanh Hai',
+  bookingId: 'SR-2026-4795',
+  tableId: 'B05',
+  guests: 2,
+  bookingTime: '12:00, 19/11/2026',
+  depositAmount: 100000,
+} as const;
+
 export default function EmailTestPage() {
-  const [customerEmail, setCustomerEmail] = useState('thanhhai@gmail.com');
-  const [customerName, setCustomerName] = useState('Thanh Hai');
-  const [bookingId, setBookingId] = useState('SR-2026-4795');
-  const [tableId, setTableId] = useState('B05');
-  const [guests, setGuests] = useState(2);
-  const [bookingTime, setBookingTime] = useState('12:00, 19/11/2026');
-  const [depositAmount, setDepositAmount] = useState(100000);
-  const [result, setResult] = useState<any>(null);
-  const [sending, setSending] = useState(false);
+  const [customerEmail, setCustomerEmail] = useState<string>(
+    INITIAL_EMAIL_TEST_PAYLOAD.customerEmail
+  );
+  const [customerName, setCustomerName] = useState<string>(
+    INITIAL_EMAIL_TEST_PAYLOAD.customerName
+  );
+  const [bookingId, setBookingId] = useState<string>(INITIAL_EMAIL_TEST_PAYLOAD.bookingId);
+  const [tableId, setTableId] = useState<string>(INITIAL_EMAIL_TEST_PAYLOAD.tableId);
+  const [guests, setGuests] = useState<number>(INITIAL_EMAIL_TEST_PAYLOAD.guests);
+  const [bookingTime, setBookingTime] = useState<string>(
+    INITIAL_EMAIL_TEST_PAYLOAD.bookingTime
+  );
+  const [depositAmount, setDepositAmount] = useState<number>(
+    INITIAL_EMAIL_TEST_PAYLOAD.depositAmount
+  );
+  const [result, setResult] = useState<EmailTestResult | null>(null);
+  const [sending, setSending] = useState<boolean>(false);
 
   const runTest = async () => {
     try {
@@ -30,7 +66,7 @@ export default function EmailTestPage() {
           depositAmount,
         }),
       });
-      const data = await res.json();
+      const data = (await res.json()) as Partial<EmailTestResult>;
       const clientMs = Math.max(1, Math.round(performance.now() - t0));
       setResult({ ...data, clientMs });
     } catch (err) {
@@ -41,7 +77,31 @@ export default function EmailTestPage() {
   };
 
   useEffect(() => {
-    runTest();
+    let isCancelled = false;
+
+    const runInitialTest = async () => {
+      try {
+        const t0 = performance.now();
+        const res = await fetch('/api/email-confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(INITIAL_EMAIL_TEST_PAYLOAD),
+        });
+        const data = (await res.json()) as Partial<EmailTestResult>;
+        const clientMs = Math.max(1, Math.round(performance.now() - t0));
+        if (!isCancelled) {
+          setResult({ ...data, clientMs });
+        }
+      } catch (err) {
+        console.error('Lỗi test email:', err);
+      }
+    };
+
+    void runInitialTest();
+
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   const info = result?.email?.details;
@@ -245,7 +305,7 @@ export default function EmailTestPage() {
                   </div>
                   <p className="truncate">
                     <span className="text-gray-400 inline-block w-12">Tới:</span>
-                    <span className="font-medium text-gray-800">{result.email.to}</span>
+                    <span className="font-medium text-gray-800">{result?.email?.to}</span>
                   </p>
                   <p className="pt-1 text-sm font-bold text-gray-900">
                     Xác nhận đặt bàn thành công tại SmaRes Gastronomy (#{info.bookingId})

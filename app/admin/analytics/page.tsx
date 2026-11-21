@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { formatMoney } from '@/app/lib/format';
 import { useToast } from '@/components/ui/Toast';
+import RevenueChartSection from '@/components/admin/RevenueChartSection';
 
 type RangeDays = 7 | 14 | 30;
 type AuthState = 'ok' | 'unauthorized' | 'forbidden';
@@ -22,13 +23,6 @@ interface OrderStatusBreakdownItem {
   status: OrderStatusKey;
   count: number;
   revenue: number;
-}
-
-interface DailyRevenuePoint {
-  date: string;
-  label: string;
-  revenue: number;
-  orders: number;
 }
 
 interface HourlyDistributionPoint {
@@ -60,7 +54,6 @@ interface AnalyticsApiResponse {
   rangeDays?: RangeDays;
   kpis?: AnalyticsKpis;
   statusBreakdown?: OrderStatusBreakdownItem[];
-  dailyRevenue?: DailyRevenuePoint[];
   hourlyDistribution?: HourlyDistributionPoint[];
   topDishes?: TopDishItem[];
   reservationSummary?: ReservationSummary;
@@ -120,24 +113,6 @@ const RESERVATION_STATUS_META: Record<
   },
 };
 
-function formatCompactAxisMoney(val: number): string {
-  if (val <= 0) return '0';
-  if (val >= 1_000_000) {
-    const millions = val / 1_000_000;
-    return `${Number.isInteger(millions) ? millions : millions.toFixed(1)}tr`;
-  }
-  if (val >= 1_000) {
-    return `${Math.round(val / 1_000)}k`;
-  }
-  return String(Math.round(val));
-}
-
-function formatVietnameseDate(isoDate: string): string {
-  const parts = isoDate.split('-');
-  if (parts.length !== 3) return isoDate;
-  return `${parts[2]}/${parts[1]}/${parts[0]}`;
-}
-
 export default function AdminAnalyticsPage() {
   const [rangeDays, setRangeDays] = useState<RangeDays>(30);
   const [reloadNonce, setReloadNonce] = useState<number>(0);
@@ -155,7 +130,6 @@ export default function AdminAnalyticsPage() {
     cancelledOrders: 0,
   });
   const [statusBreakdown, setStatusBreakdown] = useState<OrderStatusBreakdownItem[]>([]);
-  const [dailyRevenue, setDailyRevenue] = useState<DailyRevenuePoint[]>([]);
   const [hourlyDistribution, setHourlyDistribution] = useState<HourlyDistributionPoint[]>([]);
   const [topDishes, setTopDishes] = useState<TopDishItem[]>([]);
   const [reservationSummary, setReservationSummary] = useState<ReservationSummary>({
@@ -170,10 +144,14 @@ export default function AdminAnalyticsPage() {
     },
   });
 
-  const [hoveredDayIndex, setHoveredDayIndex] = useState<number | null>(null);
   const [hoveredHour, setHoveredHour] = useState<number | null>(null);
 
   const { showToast } = useToast();
+
+  const handleChartAuthError = useCallback((status: 401 | 403, message: string) => {
+    setAuthState(status === 401 ? 'unauthorized' : 'forbidden');
+    setErrorMessage(message);
+  }, []);
 
   useEffect(() => {
     let isCancelled = false;
@@ -219,7 +197,6 @@ export default function AdminAnalyticsPage() {
           }
         );
         setStatusBreakdown(Array.isArray(json.statusBreakdown) ? json.statusBreakdown : []);
-        setDailyRevenue(Array.isArray(json.dailyRevenue) ? json.dailyRevenue : []);
         setHourlyDistribution(Array.isArray(json.hourlyDistribution) ? json.hourlyDistribution : []);
         setTopDishes(Array.isArray(json.topDishes) ? json.topDishes : []);
         setReservationSummary(
@@ -235,7 +212,6 @@ export default function AdminAnalyticsPage() {
             },
           }
         );
-        setHoveredDayIndex(null);
         setHoveredHour(null);
         setLastUpdatedLabel(
           new Date().toLocaleTimeString('vi-VN', {
@@ -277,16 +253,6 @@ export default function AdminAnalyticsPage() {
     setReloadNonce((n) => n + 1);
   };
 
-  const maxDailyRevenue = useMemo(() => {
-    const maxVal = dailyRevenue.reduce((acc, item) => Math.max(acc, item.revenue), 0);
-    return maxVal > 0 ? maxVal : 1;
-  }, [dailyRevenue]);
-
-  const peakDay = useMemo(() => {
-    if (dailyRevenue.length === 0) return null;
-    return dailyRevenue.reduce((best, cur) => (cur.revenue > best.revenue ? cur : best), dailyRevenue[0]);
-  }, [dailyRevenue]);
-
   const maxHourlyRevenue = useMemo(() => {
     const maxVal = hourlyDistribution.reduce((acc, item) => Math.max(acc, item.revenue), 0);
     return maxVal > 0 ? maxVal : 1;
@@ -315,13 +281,6 @@ export default function AdminAnalyticsPage() {
 
   const hasAnyData =
     kpis.totalOrders > 0 || reservationSummary.totalReservations > 0 || topDishes.length > 0;
-
-  const activeDayPoint =
-    hoveredDayIndex !== null && dailyRevenue[hoveredDayIndex]
-      ? dailyRevenue[hoveredDayIndex]
-      : peakDay && peakDay.revenue > 0
-        ? peakDay
-        : null;
 
   const activeHourPoint =
     hoveredHour !== null
@@ -403,19 +362,6 @@ export default function AdminAnalyticsPage() {
       </main>
     );
   }
-
-  // SVG layout dimensions for Daily Revenue Bar Chart
-  const chartWidth = 720;
-  const chartHeight = 250;
-  const padLeft = 56;
-  const padRight = 16;
-  const padTop = 18;
-  const padBottom = 36;
-  const plotWidth = chartWidth - padLeft - padRight;
-  const plotHeight = chartHeight - padTop - padBottom;
-  const barSlotWidth = dailyRevenue.length > 0 ? plotWidth / dailyRevenue.length : plotWidth;
-  const barWidth = Math.max(8, Math.min(28, barSlotWidth * 0.62));
-  const labelStride = rangeDays === 30 ? 5 : rangeDays === 14 ? 2 : 1;
 
   return (
     <main className="min-h-screen bg-[#FAF8F5] text-[#1C1917] pb-20">
@@ -719,149 +665,13 @@ export default function AdminAnalyticsPage() {
               </section>
             )}
 
-            {/* Charts Row: Daily Revenue SVG Chart + Hourly Peak Distribution */}
+            {/* Charts Row: Recharts Revenue Bar Chart (Day/Week) + Hourly Peak Distribution */}
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Daily Revenue SVG Bar Chart */}
-              <div className="lg:col-span-2 bg-white p-5 sm:p-6 rounded-2xl border border-[#EBE7DF] shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
-                    <h2 className="text-base sm:text-lg font-serif font-bold text-[#1C1917]">
-                      Biểu đồ doanh thu theo ngày
-                    </h2>
-                    <p className="text-xs text-[#57534E]">
-                      Múi giờ Asia/Ho_Chi_Minh (+07:00) • Di chuột lên cột để xem chi tiết
-                    </p>
-                  </div>
-
-                  {activeDayPoint ? (
-                    <div className="px-3 py-1.5 rounded-xl bg-[#F0FDF4] border border-[#BBF7D0] text-xs flex items-center gap-2 shrink-0">
-                      <span className="font-semibold text-[#15803D]">
-                        {formatVietnameseDate(activeDayPoint.date)}:
-                      </span>
-                      <span className="font-bold text-[#14532D]">
-                        {formatMoney(activeDayPoint.revenue)}
-                      </span>
-                      <span className="text-[#57534E]">({activeDayPoint.orders} đơn)</span>
-                    </div>
-                  ) : (
-                    <span className="px-3 py-1 rounded-full bg-[#F5F2EB] text-[#78716C] text-xs font-medium">
-                      Chưa có doanh thu
-                    </span>
-                  )}
-                </div>
-
-                <div className="w-full overflow-x-auto">
-                  <svg
-                    viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-                    className="w-full min-w-[520px] h-64 select-none"
-                    role="img"
-                    aria-label={`Biểu đồ doanh thu ${rangeDays} ngày`}
-                  >
-                    <defs>
-                      <linearGradient id="smaresJadeBar" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#15803D" />
-                        <stop offset="100%" stopColor="#14532D" />
-                      </linearGradient>
-                      <linearGradient id="smaresAmberBar" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#FBBF24" />
-                        <stop offset="100%" stopColor="#D97706" />
-                      </linearGradient>
-                    </defs>
-
-                    {/* Horizontal Gridlines & Y-Axis Ticks */}
-                    {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
-                      const y = padTop + plotHeight * (1 - ratio);
-                      const tickVal = maxDailyRevenue * ratio;
-                      return (
-                        <g key={ratio}>
-                          <line
-                            x1={padLeft}
-                            y1={y}
-                            x2={chartWidth - padRight}
-                            y2={y}
-                            stroke="#EBE7DF"
-                            strokeDasharray={ratio === 0 ? undefined : '4 4'}
-                            strokeWidth="1"
-                          />
-                          <text
-                            x={padLeft - 8}
-                            y={y + 4}
-                            textAnchor="end"
-                            fill="#78716C"
-                            fontSize="10"
-                            fontWeight="500"
-                          >
-                            {formatCompactAxisMoney(tickVal)}
-                          </text>
-                        </g>
-                      );
-                    })}
-
-                    {/* Daily Bars */}
-                    {dailyRevenue.map((point, index) => {
-                      const normalizedHeight =
-                        point.revenue > 0 ? Math.max(4, (point.revenue / maxDailyRevenue) * plotHeight) : 2;
-                      const x = padLeft + index * barSlotWidth + (barSlotWidth - barWidth) / 2;
-                      const y = padTop + plotHeight - normalizedHeight;
-                      const isPeak = peakDay !== null && point.date === peakDay.date && point.revenue > 0;
-                      const isHovered = hoveredDayIndex === index;
-                      const shouldShowTick =
-                        index === 0 ||
-                        index === dailyRevenue.length - 1 ||
-                        index % labelStride === 0;
-
-                      return (
-                        <g
-                          key={point.date}
-                          onMouseEnter={() => setHoveredDayIndex(index)}
-                          onMouseLeave={() => setHoveredDayIndex(null)}
-                          className="cursor-pointer"
-                        >
-                          {/* Invisible hover hit area */}
-                          <rect
-                            x={padLeft + index * barSlotWidth}
-                            y={padTop}
-                            width={barSlotWidth}
-                            height={plotHeight + padBottom}
-                            fill="transparent"
-                          />
-                          <rect
-                            x={x}
-                            y={y}
-                            width={barWidth}
-                            height={normalizedHeight}
-                            rx={Math.min(6, barWidth / 2)}
-                            fill={
-                              point.revenue === 0
-                                ? '#EBE7DF'
-                                : isHovered || isPeak
-                                  ? 'url(#smaresAmberBar)'
-                                  : 'url(#smaresJadeBar)'
-                            }
-                            opacity={hoveredDayIndex !== null && !isHovered ? 0.65 : 1}
-                          >
-                            <title>
-                              {`${formatVietnameseDate(point.date)}: ${formatMoney(point.revenue)} (${point.orders} đơn)`}
-                            </title>
-                          </rect>
-
-                          {shouldShowTick && (
-                            <text
-                              x={padLeft + index * barSlotWidth + barSlotWidth / 2}
-                              y={chartHeight - 12}
-                              textAnchor="middle"
-                              fill={isHovered ? '#1C1917' : '#78716C'}
-                              fontSize="10"
-                              fontWeight={isHovered || isPeak ? '700' : '500'}
-                            >
-                              {point.label}
-                            </text>
-                          )}
-                        </g>
-                      );
-                    })}
-                  </svg>
-                </div>
+              <div className="lg:col-span-2">
+                <RevenueChartSection
+                  refreshNonce={reloadNonce}
+                  onAuthError={handleChartAuthError}
+                />
               </div>
 
               {/* Hourly Peak Distribution (+07:00) */}
