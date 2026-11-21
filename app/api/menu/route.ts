@@ -3,23 +3,13 @@ import connectDB from '@/app/lib/db';
 import MenuItem, { MenuCategory } from '@/app/models/MenuItem';
 import { INITIAL_MENU_ITEMS } from '@/app/lib/menuInitialData';
 import { requireRole } from '@/app/lib/auth';
+import {
+  VALID_MENU_CATEGORIES,
+  isMenuCategory,
+  validateCreateMenuPayload,
+} from '@/app/lib/menuValidation';
 
-const VALID_CATEGORIES: readonly string[] = Object.values(MenuCategory);
-
-function isMenuCategory(value: string): value is MenuCategory {
-  return VALID_CATEGORIES.includes(value);
-}
-
-function parseNonNegativePrice(raw: unknown): number | null {
-  if (typeof raw === 'number') {
-    return Number.isFinite(raw) && raw >= 0 ? raw : null;
-  }
-  if (typeof raw === 'string' && raw.trim() !== '') {
-    const parsed = Number(raw.trim());
-    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
-  }
-  return null;
-}
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
@@ -40,6 +30,7 @@ export async function GET(request: NextRequest) {
           {
             success: true,
             count: 0,
+            categories: VALID_MENU_CATEGORIES,
             data: [],
           },
           { status: 200 }
@@ -54,6 +45,7 @@ export async function GET(request: NextRequest) {
       {
         success: true,
         count: menuItems.length,
+        categories: VALID_MENU_CATEGORIES,
         data: menuItems,
       },
       { status: 200 }
@@ -72,6 +64,7 @@ export async function GET(request: NextRequest) {
       {
         success: true,
         count: fallbackData.length,
+        categories: VALID_MENU_CATEGORIES,
         data: fallbackData,
       },
       { status: 200 }
@@ -96,91 +89,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (typeof rawBody !== 'object' || rawBody === null) {
+    const validation = validateCreateMenuPayload(rawBody);
+    if (!validation.ok) {
       return NextResponse.json(
-        { success: false, message: 'Dữ liệu món ăn không hợp lệ.' },
-        { status: 400 }
-      );
-    }
-
-    const body = rawBody as Record<string, unknown>;
-    const name = typeof body.name === 'string' ? body.name.trim() : '';
-    const price = parseNonNegativePrice(body.price);
-    const description = typeof body.description === 'string' ? body.description.trim() : '';
-    const imageUrl = typeof body.imageUrl === 'string' ? body.imageUrl.trim() : '';
-    const rawCategory = typeof body.category === 'string' ? body.category.trim() : '';
-
-    if (!name) {
-      return NextResponse.json(
-        { success: false, message: 'Vui lòng nhập tên món ăn.' },
-        { status: 400 }
-      );
-    }
-
-    if (price === null) {
-      return NextResponse.json(
-        { success: false, message: 'Giá món ăn phải là số hợp lệ lớn hơn hoặc bằng 0.' },
-        { status: 400 }
-      );
-    }
-
-    if (!description) {
-      return NextResponse.json(
-        { success: false, message: 'Vui lòng nhập mô tả món ăn.' },
-        { status: 400 }
-      );
-    }
-
-    if (!imageUrl) {
-      return NextResponse.json(
-        { success: false, message: 'Vui lòng cung cấp đường dẫn hình ảnh món ăn.' },
-        { status: 400 }
-      );
-    }
-
-    if (!rawCategory || !isMenuCategory(rawCategory)) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: 'Danh mục món ăn không hợp lệ (Khai vị, Món chính, Đồ uống, Tráng miệng).',
-        },
-        { status: 400 }
-      );
-    }
-
-    if (body.isAvailable !== undefined && typeof body.isAvailable !== 'boolean') {
-      return NextResponse.json(
-        { success: false, message: 'Trạng thái phục vụ (isAvailable) phải là giá trị boolean.' },
-        { status: 400 }
-      );
-    }
-
-    if (body.isPreOrderOnly !== undefined && typeof body.isPreOrderOnly !== 'boolean') {
-      return NextResponse.json(
-        { success: false, message: 'Cờ đặt trước (isPreOrderOnly) phải là giá trị boolean.' },
-        { status: 400 }
-      );
-    }
-
-    if (body.preparationNote !== undefined && typeof body.preparationNote !== 'string') {
-      return NextResponse.json(
-        { success: false, message: 'Ghi chú chế biến (preparationNote) phải là chuỗi ký tự.' },
+        { success: false, message: validation.message },
         { status: 400 }
       );
     }
 
     await connectDB();
 
-    const createdItem = await MenuItem.create({
-      name,
-      price,
-      description,
-      imageUrl,
-      category: rawCategory,
-      isAvailable: typeof body.isAvailable === 'boolean' ? body.isAvailable : true,
-      isPreOrderOnly: typeof body.isPreOrderOnly === 'boolean' ? body.isPreOrderOnly : false,
-      preparationNote: typeof body.preparationNote === 'string' ? body.preparationNote.trim() : '',
-    });
+    const createdItem = await MenuItem.create(validation.data);
 
     return NextResponse.json(
       {
