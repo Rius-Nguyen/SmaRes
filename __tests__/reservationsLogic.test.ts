@@ -17,7 +17,9 @@ import {
   doDateIntervalsOverlap,
   doTimeSlotsOverlap,
   evaluateLateNightDiningNotice,
+  evaluatePhysicalTableSlotBlock,
   extendEndTimeWithCleaningBuffer,
+  findDueConfirmedReservationForAutoHold,
   getOperatingHoursForDate,
   isSlotBeforeMinAdvance,
   isVietnamSlotInPast,
@@ -270,6 +272,94 @@ describe('reservationHelpers', () => {
     expect(reservedMeta.graceExpiresAt).toBe('2026-11-20T12:15:00.000Z');
     expect(reservedMeta.diningEndAt).toBeNull();
 
+    // SEATED table must NOT steal an unchecked CONFIRMED evening reservation's end time
+    const seatedAtDate = new Date('2026-11-21T07:00:00.000Z'); // 14:00 VN
+    const walkInIgnoringEveningConfirmed = computeTableTimingMeta({
+      tableStatus: 'SEATED',
+      tableSeatedAt: seatedAtDate,
+      activeReservation: {
+        status: 'CONFIRMED',
+        date: '2026-11-21',
+        time: '20:00',
+        checkInTime: null,
+      },
+    });
+    expect(walkInIgnoringEveningConfirmed.diningStartAt).toBe('2026-11-21T07:00:00.000Z');
+    expect(walkInIgnoringEveningConfirmed.diningEndAt).toBe('2026-11-21T09:30:00.000Z');
+
+    // Manual 15m hold via Giữ bàn button computes graceExpiresAt countdown cleanly
+    const manualHoldExpires = new Date('2026-11-21T08:15:00.000Z');
+    const manualHoldMeta = computeTableTimingMeta({
+      tableStatus: 'RESERVED',
+      tableHoldExpiresAt: manualHoldExpires,
+      activeReservation: null,
+    });
+    expect(manualHoldMeta.graceExpiresAt).toBe('2026-11-21T08:15:00.000Z');
+    expect(manualHoldMeta.startTime).toBe('2026-11-21T08:00:00.000Z');
+
+    // Walk-in SEATED physical table blocks overlapping same-day bookings, permits tomorrow
+    const seatedNowMs = Date.parse('2026-11-21T07:30:00.000Z'); // 14:30 VN
+    const sameDayOverlap = evaluatePhysicalTableSlotBlock({
+      tableStatus: 'SEATED',
+      tableSeatedAt: '2026-11-21T07:00:00.000Z', // 14:00 VN -> cycle ends 17:00 VN (10:00 UTC)
+      requestedStartMs: Date.parse('2026-11-21T09:00:00.000Z'), // 16:00 VN
+      requestedEndMs: Date.parse('2026-11-21T12:00:00.000Z'), // 19:00 VN
+      nowMs: seatedNowMs,
+    });
+    expect(sameDayOverlap).toEqual({ blocked: true, reason: 'SEATED' });
+
+    const nextDayNoOverlap = evaluatePhysicalTableSlotBlock({
+      tableStatus: 'SEATED',
+      tableSeatedAt: '2026-11-21T07:00:00.000Z',
+      requestedStartMs: Date.parse('2026-11-22T12:00:00.000Z'),
+      requestedEndMs: Date.parse('2026-11-22T15:00:00.000Z'),
+      nowMs: seatedNowMs,
+    });
+    expect(nextDayNoOverlap).toEqual({ blocked: false, reason: null });
+
+    // findDueConfirmedReservationForAutoHold: triggers auto AVAILABLE -> RESERVED only when due [startTime, endTime)
+    const todayBookingList = [
+      {
+        _id: 'r-other-day',
+        status: 'CONFIRMED',
+        date: '2026-11-22',
+        time: '19:00',
+      },
+      {
+        _id: 'r-checked-in',
+        status: 'CHECKED_IN',
+        date: '2026-11-21',
+        time: '19:00',
+      },
+      {
+        _id: 'r-due',
+        status: 'CONFIRMED',
+        date: '2026-11-21',
+        time: '19:00', // 12:00 UTC -> ends 14:30 UTC
+      },
+    ];
+    expect(
+      findDueConfirmedReservationForAutoHold(
+        todayBookingList,
+        '2026-11-21',
+        Date.parse('2026-11-21T11:59:59.000Z')
+      )
+    ).toBeNull();
+    expect(
+      findDueConfirmedReservationForAutoHold(
+        todayBookingList,
+        '2026-11-21',
+        Date.parse('2026-11-21T12:00:00.000Z')
+      )?._id
+    ).toBe('r-due');
+    expect(
+      findDueConfirmedReservationForAutoHold(
+        todayBookingList,
+        '2026-11-21',
+        Date.parse('2026-11-21T14:30:00.000Z')
+      )
+    ).toBeNull();
+
     // Past-slot check in Vietnam GMT+7 & BR-RES-13 (>= 30 minutes lead time)
     const slotMs = parseVietnamDateTime('2026-12-20', '19:15');
     expect(BOOKING_MIN_ADVANCE_MINUTES).toBe(30);
@@ -457,6 +547,16 @@ describe('Reservations API route handlers', () => {
     const staffRes = await GET(staffReq);
     expect(staffRes.status).toBe(200);
     expect(mocks.reservationFind).toHaveBeenLastCalledWith({ status: 'CHECKED_IN' });
+
+    // Staff requesting ?scope=mine sees only their own reservations
+    mocks.requireAuth.mockReturnValueOnce({
+      user: { userId: 'staff-1', email: 'staff@smares.vn', role: 'staff' },
+    });
+    setupFindSortLean([]);
+    const staffMineReq = new NextRequest('http://localhost/api/reservations?scope=mine');
+    const staffMineRes = await GET(staffMineReq);
+    expect(staffMineRes.status).toBe(200);
+    expect(mocks.reservationFind).toHaveBeenLastCalledWith({ userId: 'staff-1' });
 
     mocks.requireAuth.mockReturnValueOnce({
       user: { userId: 'staff-1', email: 'staff@smares.vn', role: 'staff' },

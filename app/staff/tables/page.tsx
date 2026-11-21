@@ -174,6 +174,7 @@ export default function StaffTablesPage() {
   const [mutatingIds, setMutatingIds] = useState<string[]>([]);
   const [walkInNamesByTable, setWalkInNamesByTable] = useState<Record<string, string>>({});
   const [checkInModal, setCheckInModal] = useState<CheckInModalState | null>(null);
+  const [releaseConfirmTarget, setReleaseConfirmTarget] = useState<StaffTableItem | null>(null);
   const [reloadNonce, setReloadNonce] = useState<number>(0);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
@@ -244,6 +245,38 @@ export default function StaffTablesPage() {
     };
   }, [reloadNonce]);
 
+  // Tự động đồng bộ ngay khi tới giờ hẹn của một bàn AVAILABLE hôm nay để chuyển sang Giữ bàn (RESERVED)
+  useEffect(() => {
+    if (!todayDate || tables.length === 0) return;
+
+    const nowSnapshotMs = Date.now();
+    let earliestDueMs = Number.POSITIVE_INFINITY;
+
+    for (const table of tables) {
+      if (table.status !== TABLE_STATUS.AVAILABLE) continue;
+      for (const res of table.reservations) {
+        if (res.status !== 'CONFIRMED' || res.date !== todayDate) continue;
+        const startMs = res.startTime ? Date.parse(res.startTime) : Number.NaN;
+        const endMs = res.endTime ? Date.parse(res.endTime) : Number.NaN;
+        if (!Number.isFinite(startMs)) continue;
+        if (Number.isFinite(endMs) && nowSnapshotMs >= endMs) continue;
+        if (startMs < earliestDueMs) {
+          earliestDueMs = startMs;
+        }
+      }
+    }
+
+    if (!Number.isFinite(earliestDueMs)) return;
+    const rawDelayMs = earliestDueMs - nowSnapshotMs + 500;
+    if (rawDelayMs > 24 * 60 * 60 * 1000) return;
+
+    const timer = window.setTimeout(() => {
+      setReloadNonce((prev) => prev + 1);
+    }, Math.max(300, rawDelayMs));
+
+    return () => window.clearTimeout(timer);
+  }, [tables, todayDate]);
+
   useEffect(() => {
     if (!checkInModal) return;
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -264,10 +297,11 @@ export default function StaffTablesPage() {
     table: StaffTableItem;
     nextStatus: TableStatusValue;
     reservationId?: string;
+    isWalkIn?: boolean;
     customerName?: string;
     phone?: string;
   }): Promise<boolean> => {
-    const { table, nextStatus, reservationId, customerName, phone } = params;
+    const { table, nextStatus, reservationId, isWalkIn, customerName, phone } = params;
 
     if (!canTransitionTableStatus(table.status, nextStatus)) {
       showToast(
@@ -287,6 +321,7 @@ export default function StaffTablesPage() {
           tableId: table._id,
           nextStatus,
           ...(reservationId ? { reservationId } : {}),
+          ...(isWalkIn ? { isWalkIn: true } : {}),
           ...(customerName ? { customerName } : {}),
           ...(phone ? { phone } : {}),
         }),
@@ -362,6 +397,7 @@ export default function StaffTablesPage() {
       table: checkInModal.table,
       nextStatus: TABLE_STATUS.SEATED,
       reservationId: checkInModal.selectedReservationId || undefined,
+      isWalkIn: !checkInModal.selectedReservationId,
       customerName: checkInModal.selectedReservationId
         ? undefined
         : checkInModal.customerName.trim(),
@@ -762,17 +798,42 @@ export default function StaffTablesPage() {
                             Ghi chú: {activeRes.note}
                           </p>
                         )}
+                        {table.status === TABLE_STATUS.AVAILABLE &&
+                          activeRes.status === 'CONFIRMED' &&
+                          activeRes.date === todayDate && (
+                            <p className="text-[11px] text-[#14532d] bg-[#f0fdf4] border border-[#bbf7d0] rounded-lg px-2.5 py-1">
+                              Tự động chuyển sang <strong>Giữ bàn (RESERVED)</strong> lúc{' '}
+                              <strong>{activeRes.time}</strong> nếu khách chưa Check-in.
+                            </p>
+                          )}
                       </div>
                     ) : table.status === TABLE_STATUS.SEATED ? (
-                      <div className="rounded-xl bg-[#faf8f5] border border-[#ebe7df] p-3.5 space-y-1">
-                        <p className="text-xs font-bold text-[#14532d]">
-                          Phiên phục vụ tại bàn (Walk-in)
+                      <div className="space-y-2">
+                        <div className="rounded-xl bg-[#faf8f5] border border-[#ebe7df] p-3.5 space-y-1">
+                          <p className="text-xs font-bold text-[#14532d]">
+                            Phiên phục vụ tại bàn (Walk-in)
+                          </p>
+                          <p className="text-sm font-semibold text-[#1c1917]">
+                            {walkInName || 'Khách tại bàn'}
+                          </p>
+                          <p className="text-[11px] text-[#57534e]">
+                            QR gọi món đang được kích hoạt cho bàn {table.tableNumber}.
+                          </p>
+                        </div>
+                        {nextRes && (
+                          <div className="rounded-xl bg-[#fffbeb] border border-[#fde68a] px-3 py-2 text-[11px] text-[#92400e]">
+                            <strong>Lịch đặt kế tiếp:</strong> {nextRes.customerName} lúc{' '}
+                            <strong>{nextRes.time}</strong> ({formatDateVi(nextRes.date)})
+                          </div>
+                        )}
+                      </div>
+                    ) : table.status === TABLE_STATUS.RESERVED ? (
+                      <div className="rounded-xl bg-[#fffbeb]/70 border border-[#fde68a] p-3.5 space-y-1">
+                        <p className="text-xs font-bold text-[#b45309]">
+                          Đang giữ bàn chờ khách Check-in
                         </p>
-                        <p className="text-sm font-semibold text-[#1c1917]">
-                          {walkInName || 'Khách tại bàn'}
-                        </p>
-                        <p className="text-[11px] text-[#57534e]">
-                          QR gọi món đang được kích hoạt cho bàn {table.tableNumber}.
+                        <p className="text-[11px] text-[#92400e]">
+                          Bàn đang ở trạng thái giữ chỗ tự động. Khi khách đến bàn, vui lòng bấm Check-in (Mở bàn).
                         </p>
                       </div>
                     ) : (
@@ -909,13 +970,19 @@ export default function StaffTablesPage() {
                           {nowMs > graceEndMs
                             ? 'Quá hạn giữ chỗ 15 phút (No-show)'
                             : nowMs >= reservedStartMs
-                              ? 'Đang giữ chỗ 15p (BR-RES-09)'
+                              ? activeRes
+                                ? 'Đang giữ chỗ 15p (BR-RES-09)'
+                                : 'Đang giữ bàn 15p tại quầy'
                               : 'Đếm ngược tới giờ hẹn'}
                         </p>
                         <p className="text-[10px] opacity-85 mt-0.5">
                           {nowMs > graceEndMs
-                            ? 'Khách chưa check-in — có thể Nhả bàn'
-                            : `Giờ hẹn: ${formatVietnamTimeHm(reservedStartMs)} • Hạn giữ: ${formatVietnamTimeHm(graceEndMs)}`}
+                            ? activeRes
+                              ? `Hẹn ${activeRes.time} (${formatDateVi(activeRes.date)}) · Hết giữ lúc ${formatVietnamTimeHm(graceEndMs)}`
+                              : `Hết hạn giữ lúc ${formatVietnamTimeHm(graceEndMs)} — Có thể Nhả bàn`
+                            : activeRes
+                              ? `Giờ hẹn: ${formatVietnamTimeHm(reservedStartMs)} • Hạn giữ: ${formatVietnamTimeHm(graceEndMs)}`
+                              : `Giữ bàn đến: ${formatVietnamTimeHm(graceEndMs)}`}
                         </p>
                       </div>
                       <span
@@ -928,7 +995,7 @@ export default function StaffTablesPage() {
                         }`}
                       >
                         {nowMs > graceEndMs
-                          ? `+${formatCountdownHhMmSs(Math.floor((nowMs - graceEndMs) / 1000))}`
+                          ? `Quá hạn ${formatCountdownHhMmSs(Math.floor((nowMs - graceEndMs) / 1000))}`
                           : nowMs >= reservedStartMs
                             ? formatCountdownHhMmSs(Math.ceil((graceEndMs - nowMs) / 1000))
                             : formatCountdownHhMmSs(Math.ceil((reservedStartMs - nowMs) / 1000))}
@@ -982,34 +1049,12 @@ export default function StaffTablesPage() {
                       </button>
                     )}
 
-                    {allowedTransitions.includes(TABLE_STATUS.RESERVED) && (
-                      <button
-                        type="button"
-                        disabled={isMutating}
-                        onClick={() =>
-                          void executeTransition({
-                            table,
-                            nextStatus: TABLE_STATUS.RESERVED,
-                          })
-                        }
-                        className="min-h-[42px] px-3.5 py-2 rounded-xl bg-[#fffbeb] hover:bg-[#fef3c7] text-[#92400e] border border-[#fde68a] text-xs font-semibold transition-colors cursor-pointer disabled:opacity-60"
-                      >
-                        Giữ bàn
-                      </button>
-                    )}
-
                     {table.status === TABLE_STATUS.RESERVED &&
                       allowedTransitions.includes(TABLE_STATUS.AVAILABLE) && (
                         <button
                           type="button"
                           disabled={isMutating}
-                          onClick={() =>
-                            void executeTransition({
-                              table,
-                              nextStatus: TABLE_STATUS.AVAILABLE,
-                              reservationId: activeRes?._id,
-                            })
-                          }
+                          onClick={() => setReleaseConfirmTarget(table)}
                           className="min-h-[42px] px-3 py-2 rounded-xl bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-60"
                         >
                           Nhả bàn
@@ -1150,6 +1195,18 @@ export default function StaffTablesPage() {
                   <p className="text-xs font-semibold text-[#14532d]">
                     Thông tin khách vãng lai (Walk-in — tùy chọn)
                   </p>
+                  {checkInModal.table.reservations.some(
+                    (r) => r.status === 'CONFIRMED' && r.date === todayDate
+                  ) && (
+                    <div className="rounded-xl bg-[#fffbeb] border border-[#fde68a] px-3 py-2 text-[11px] text-[#92400e]">
+                      <strong>Lưu ý:</strong> Bàn này đã có lịch đặt trước hôm nay (
+                      {checkInModal.table.reservations
+                        .filter((r) => r.status === 'CONFIRMED' && r.date === todayDate)
+                        .map((r) => `${r.time} - ${r.customerName}`)
+                        .join(', ')}
+                      ). Hãy nhắc khách vãng lai trả bàn trước giờ hẹn.
+                    </div>
+                  )}
                   <div>
                     <label className="block text-xs font-medium text-[#57534e] mb-1">
                       Tên khách hàng
@@ -1215,6 +1272,63 @@ export default function StaffTablesPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Modal xác nhận Nhả bàn (tránh bấm nhầm hủy lịch đặt của khách) */}
+      {releaseConfirmTarget && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="release-table-modal-title"
+        >
+          <div className="bg-white rounded-3xl border border-[#ebe7df] shadow-2xl max-w-md w-full p-6 space-y-4">
+            <h2 id="release-table-modal-title" className="font-serif text-xl font-bold text-[#1c1917]">
+              Xác nhận nhả Bàn {releaseConfirmTarget.tableNumber}?
+            </h2>
+            <p className="text-xs sm:text-sm text-[#57534e] leading-relaxed">
+              {releaseConfirmTarget.activeReservation ? (
+                <>
+                  Thao tác này sẽ đưa bàn về trạng thái <strong>AVAILABLE (Sẵn sàng)</strong> và{' '}
+                  <strong className="text-rose-700">hủy đơn đặt bàn</strong>{' '}
+                  <span className="font-mono font-bold text-[#14532d]">
+                    {releaseConfirmTarget.activeReservation.bookingCode}
+                  </span>{' '}
+                  ({releaseConfirmTarget.activeReservation.customerName}).
+                </>
+              ) : (
+                <>
+                  Thao tác này sẽ kết thúc phiên giữ bàn tạm thời và đưa Bàn{' '}
+                  <strong>{releaseConfirmTarget.tableNumber}</strong> về trạng thái{' '}
+                  <strong>AVAILABLE (Sẵn sàng)</strong>.
+                </>
+              )}
+            </p>
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setReleaseConfirmTarget(null)}
+                className="w-1/2 py-2.5 rounded-xl border border-[#d6d0c4] bg-white hover:bg-[#f5f2eb] text-xs font-semibold text-[#1c1917] cursor-pointer"
+              >
+                Không, giữ nguyên
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const target = releaseConfirmTarget;
+                  setReleaseConfirmTarget(null);
+                  void executeTransition({
+                    table: target,
+                    nextStatus: TABLE_STATUS.AVAILABLE,
+                    reservationId: target.activeReservation?._id,
+                  });
+                }}
+                className="w-1/2 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs cursor-pointer"
+              >
+                Xác nhận nhả bàn
+              </button>
+            </div>
           </div>
         </div>
       )}
