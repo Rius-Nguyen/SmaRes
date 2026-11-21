@@ -6,6 +6,7 @@ import {
   computeSlotBlockInterval,
   doDateIntervalsOverlap,
   doTimeSlotsOverlap,
+  evaluatePhysicalTableSlotBlock,
   extendEndTimeWithCleaningBuffer,
   generateBookingCode,
   getOperatingHoursForDate,
@@ -86,6 +87,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const rawBookingCode = searchParams.get('bookingCode')?.trim() ?? '';
     const rawStatus = searchParams.get('status')?.trim() ?? '';
+    const rawScope = searchParams.get('scope')?.trim().toLowerCase() ?? '';
 
     const filter: {
       userId?: string;
@@ -94,7 +96,7 @@ export async function GET(request: NextRequest) {
     } = {};
 
     const isStaffOrAdmin = auth.user.role === 'staff' || auth.user.role === 'admin';
-    if (!isStaffOrAdmin) {
+    if (!isStaffOrAdmin || rawScope === 'mine') {
       filter.userId = auth.user.userId;
     }
 
@@ -271,6 +273,31 @@ export async function POST(request: NextRequest) {
           message: 'Ngày hoặc khung giờ đặt bàn không hợp lệ (YYYY-MM-DD và HH:mm).',
         },
         { status: 400 }
+      );
+    }
+
+    const physicalBlock = evaluatePhysicalTableSlotBlock({
+      tableStatus: (table as { status?: string | null }).status ?? null,
+      tableSeatedAt: (table as { seatedAt?: Date | string | null }).seatedAt ?? null,
+      tableUpdatedAt: (table as { updatedAt?: Date | string | null }).updatedAt ?? null,
+      tableCleaningDeadlineAt:
+        (table as { cleaningDeadlineAt?: Date | string | null }).cleaningDeadlineAt ?? null,
+      tableHoldExpiresAt:
+        (table as { holdExpiresAt?: Date | string | null }).holdExpiresAt ?? null,
+      requestedStartMs: blockInterval.startTime.getTime(),
+      requestedEndMs: blockInterval.endTime.getTime(),
+    });
+
+    if (physicalBlock.blocked) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            physicalBlock.reason === 'CLEANING'
+              ? 'Bàn này đang được dọn dẹp, chưa kịp sẵn sàng cho khung giờ bạn chọn.'
+              : 'Bàn này đang có khách phục vụ trong khung giờ trùng lặp!',
+        },
+        { status: 409 }
       );
     }
 

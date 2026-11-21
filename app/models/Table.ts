@@ -25,6 +25,8 @@ export interface ITable {
   zoneName: string;
   status: TableStatus;
   qrToken?: string | null;
+  seatedAt?: Date | null;
+  holdExpiresAt?: Date | null;
   cleaningStartedAt?: Date | null;
   cleaningDeadlineAt?: Date | null;
   cleaningType?: TableCleaningType | null;
@@ -61,6 +63,14 @@ const TableSchema = new Schema<ITable>(
     qrToken: {
       type: String,
       trim: true,
+      default: null,
+    },
+    seatedAt: {
+      type: Date,
+      default: null,
+    },
+    holdExpiresAt: {
+      type: Date,
       default: null,
     },
     cleaningStartedAt: {

@@ -31,6 +31,7 @@ interface AvailabilityTable {
   isLocked?: boolean;
   isLockedByCurrentSession?: boolean;
   lockedUntil?: string | null;
+  unavailableReason?: 'SEATED' | 'CLEANING' | 'RESERVED_HOLD' | 'BOOKED' | 'LOCKED' | null;
   isAvailable: boolean;
 }
 
@@ -497,8 +498,19 @@ export default function BookingDiagramPage() {
     if (isBooked) {
       colorClasses =
         'bg-[#fee2e2] text-[#b91c1c] border-[#fca5a5] opacity-75 cursor-not-allowed';
-      subLabel = 'Đã đặt';
-      titleText = `Bàn ${table.tableNumber} đã có khách đặt trong khung giờ trùng lặp với ${queryTime}`;
+      if (table.unavailableReason === 'SEATED') {
+        subLabel = 'Đang có khách';
+        titleText = `Bàn ${table.tableNumber} đang có khách dùng bữa trong khung giờ trùng lặp với ${queryTime}`;
+      } else if (table.unavailableReason === 'CLEANING') {
+        subLabel = 'Đang dọn bàn';
+        titleText = `Bàn ${table.tableNumber} đang dọn dẹp, chưa sẵn sàng vào lúc ${queryTime}`;
+      } else if (table.unavailableReason === 'RESERVED_HOLD') {
+        subLabel = 'Đang giữ chỗ';
+        titleText = `Bàn ${table.tableNumber} đang được giữ chỗ tại quầy trong khung giờ trùng lặp với ${queryTime}`;
+      } else {
+        subLabel = 'Đã đặt';
+        titleText = `Bàn ${table.tableNumber} đã có khách đặt trong khung giờ trùng lặp với ${queryTime}`;
+      }
     } else if (isLockedByOther) {
       const rem = table.lockedUntil
         ? computeRemainingLockSeconds(table.lockedUntil, nowTickMs)
@@ -917,6 +929,12 @@ export default function BookingDiagramPage() {
               {actionWarning && (
                 <div className="mb-4 p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs sm:text-sm text-red-700">
                   {actionWarning}
+                </div>
+              )}
+
+              {selectedTable && selectedTable.isAvailable && selectedTable.status === 'SEATED' && (
+                <div className="mb-4 p-3 rounded-xl bg-[#fffbeb] border border-[#fde68a] text-xs text-[#92400e]">
+                  Lưu ý: Bàn <strong>{selectedTable.tableNumber}</strong> hiện đang phục vụ lượt khách khác ở thời điểm hiện tại, nhưng hoàn toàn trống vào khung giờ bạn chọn (<strong>{queryTime}</strong> ngày <strong>{queryDate}</strong>).
                 </div>
               )}
 

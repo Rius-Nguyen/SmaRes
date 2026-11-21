@@ -76,7 +76,8 @@ function formatDateVi(dateStr: string): string {
 }
 
 export default function HistoryPage() {
-  const { isAdmin } = useAuthSession();
+  const { isAdmin, isStaffOrAdmin } = useAuthSession();
+  const [historyScope, setHistoryScope] = useState<'mine' | 'all'>('mine');
   const [reservations, setReservations] = useState<ReservationRecord[]>([]);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [loading, setLoading] = useState<boolean>(true);
@@ -97,12 +98,14 @@ export default function HistoryPage() {
     return () => window.clearInterval(timer);
   }, []);
 
+  const activeScope: 'mine' | 'all' = isStaffOrAdmin ? historyScope : 'mine';
+
   useEffect(() => {
     let cancelled = false;
 
     const loadReservations = async () => {
       try {
-        const res = await fetch('/api/reservations', {
+        const res = await fetch(`/api/reservations?scope=${activeScope}`, {
           method: 'GET',
           cache: 'no-store',
         });
@@ -141,7 +144,7 @@ export default function HistoryPage() {
     return () => {
       cancelled = true;
     };
-  }, [reloadNonce]);
+  }, [reloadNonce, activeScope]);
 
   const handleRetry = () => {
     setLoading(true);
@@ -175,7 +178,7 @@ export default function HistoryPage() {
         setSelectedReservation(null);
 
         // Đồng bộ lại dữ liệu mới nhất từ server
-        const refreshRes = await fetch('/api/reservations', {
+        const refreshRes = await fetch(`/api/reservations?scope=${activeScope}`, {
           method: 'GET',
           cache: 'no-store',
         });
@@ -256,11 +259,45 @@ export default function HistoryPage() {
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 pb-5 border-b border-[#ebe7df] gap-4">
             <div>
               <span className="text-xs font-bold uppercase tracking-wider text-[#15803d] bg-[#f0fdf4] px-3.5 py-1.5 rounded-full border border-[#bbf7d0] inline-block mb-2">
-                Quản lý đặt bàn
+                {activeScope === 'all' ? 'Điều hành nhà hàng' : 'Quản lý đặt bàn'}
               </span>
               <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#14532d]">
-                Lịch Sử Đặt Bàn
+                {activeScope === 'all'
+                  ? 'Toàn Bộ Lịch Đặt Bàn'
+                  : 'Lịch Sử Đặt Bàn Của Tôi'}
               </h1>
+              {isStaffOrAdmin && (
+                <div className="mt-3 inline-flex p-1 rounded-xl bg-[#faf8f5] border border-[#ebe7df] gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoading(true);
+                      setHistoryScope('mine');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                      activeScope === 'mine'
+                        ? 'bg-[#14532d] text-white shadow-xs'
+                        : 'text-[#57534e] hover:text-[#1c1917]'
+                    }`}
+                  >
+                    Lịch sử của tôi
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoading(true);
+                      setHistoryScope('all');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                      activeScope === 'all'
+                        ? 'bg-[#14532d] text-white shadow-xs'
+                        : 'text-[#57534e] hover:text-[#1c1917]'
+                    }`}
+                  >
+                    Tất cả đặt bàn (Staff/Admin)
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
@@ -385,7 +422,9 @@ export default function HistoryPage() {
               </div>
               <h2 className="font-serif font-bold text-xl text-[#1c1917] mb-1.5">
                 {reservations.length === 0
-                  ? 'Bạn chưa có lịch đặt bàn nào'
+                  ? activeScope === 'all'
+                    ? 'Chưa có lịch đặt bàn nào trên hệ thống'
+                    : 'Bạn chưa có lịch đặt bàn nào'
                   : 'Không có đơn đặt bàn nào khớp bộ lọc'}
               </h2>
               <p className="text-sm text-[#78716c] mb-6 max-w-md mx-auto">
@@ -418,6 +457,7 @@ export default function HistoryPage() {
                 <thead>
                   <tr className="text-xs font-bold text-[#78716c] uppercase tracking-wider border-b border-[#ebe7df]">
                     <th className="pb-4 pl-4">Mã đặt chỗ</th>
+                    {activeScope === 'all' && <th className="pb-4">Khách hàng</th>}
                     <th className="pb-4">Ngày đặt</th>
                     <th className="pb-4">Giờ hẹn</th>
                     <th className="pb-4">Bàn</th>
@@ -485,6 +525,18 @@ export default function HistoryPage() {
                             </p>
                           )}
                         </td>
+                        {activeScope === 'all' && (
+                          <td className="py-4 pr-3">
+                            <p className="font-semibold text-[#1c1917]">
+                              {reservation.customerName || 'Khách tại bàn'}
+                            </p>
+                            {reservation.phone && (
+                              <p className="text-xs text-[#78716c] mt-0.5">
+                                {reservation.phone}
+                              </p>
+                            )}
+                          </td>
+                        )}
                         <td className="py-4 text-[#1c1917] font-medium">
                           {formatDateVi(reservation.date)}
                         </td>

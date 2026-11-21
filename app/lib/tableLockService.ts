@@ -4,6 +4,7 @@ import {
   computeSlotBlockInterval,
   doDateIntervalsOverlap,
   doTimeSlotsOverlap,
+  evaluatePhysicalTableSlotBlock,
   extendEndTimeWithCleaningBuffer,
   isSlotBeforeMinAdvance,
 } from '@/app/lib/reservationHelpers';
@@ -305,12 +306,50 @@ export async function acquireTableLock(
   });
 
   // 2. Kiểm tra bàn đã có đơn đặt bàn hợp lệ trùng khoảng 180 phút (150p dùng bữa + 30p dọn bàn)
+  // và kiểm tra trạng thái thực tế của bàn vật lý (đang SEATED walk-in / CLEANING / giữ chỗ tại quầy)
+  const findByIdResult = Table.findById(input.tableId);
+  const physicalTable = (
+    findByIdResult && typeof (findByIdResult as { lean?: unknown }).lean === 'function'
+      ? await (findByIdResult as { lean: () => Promise<Record<string, unknown> | null> }).lean()
+      : await findByIdResult
+  ) as {
+    status?: string | null;
+    seatedAt?: Date | string | null;
+    cleaningDeadlineAt?: Date | string | null;
+    holdExpiresAt?: Date | string | null;
+    updatedAt?: Date | string | null;
+  } | null;
+
+  const newBlockInterval = computeSlotBlockInterval(input.date, input.time);
+
+  if (physicalTable && newBlockInterval) {
+    const physicalBlock = evaluatePhysicalTableSlotBlock({
+      tableStatus: physicalTable.status,
+      tableSeatedAt: physicalTable.seatedAt ?? null,
+      tableUpdatedAt: physicalTable.updatedAt ?? null,
+      tableCleaningDeadlineAt: physicalTable.cleaningDeadlineAt ?? null,
+      tableHoldExpiresAt: physicalTable.holdExpiresAt ?? null,
+      requestedStartMs: newBlockInterval.startTime.getTime(),
+      requestedEndMs: newBlockInterval.endTime.getTime(),
+      nowMs: now.getTime(),
+    });
+    if (physicalBlock.blocked) {
+      return {
+        acquired: false,
+        conflictReason: 'ALREADY_RESERVED',
+        lockedUntil: null,
+        message:
+          physicalBlock.reason === 'CLEANING'
+            ? 'Bàn này đang được dọn dẹp, chưa kịp sẵn sàng vào khung giờ bạn chọn.'
+            : 'Bàn này đang có khách phục vụ trong khung giờ trùng lặp!',
+      };
+    }
+  }
+
   const validReservationId =
     input.reservationId && Types.ObjectId.isValid(input.reservationId)
       ? input.reservationId
       : null;
-
-  const newBlockInterval = computeSlotBlockInterval(input.date, input.time);
 
   const reservationQuery: Record<string, unknown> = {
     tableId: input.tableId,

@@ -7,9 +7,11 @@ import Reservation, { ReservationStatus, type IReservation } from '@/app/models/
 import { requireRole } from '@/app/lib/auth';
 import {
   DINING_DURATION_MS,
+  RESERVATION_HOLD_GRACE_MS,
   computeCleaningSchedule,
   computeDiningInterval,
   computeTableTimingMeta,
+  findDueConfirmedReservationForAutoHold,
 } from '@/app/lib/reservationHelpers';
 import {
   TABLE_STATUS,
@@ -94,21 +96,28 @@ function toReservationSummary(
 
 function pickPrimaryReservation(
   reservations: readonly ActiveReservationSummary[],
-  todayDate: string
+  todayDate: string,
+  tableStatus?: TableStatusValue
 ): ActiveReservationSummary | null {
   const checkedIn = reservations.find((r) => r.status === ReservationStatus.CHECKED_IN);
   if (checkedIn) {
     return checkedIn;
   }
 
-  const todayConfirmed = reservations.find(
-    (r) => r.status === ReservationStatus.CONFIRMED && r.date === todayDate
+  // Bàn đang SEATED mà không có đơn CHECKED_IN là phiên Walk-in -> không gắn nhầm đơn CONFIRMED giờ sau
+  if (tableStatus === TABLE_STATUS.SEATED) {
+    return null;
+  }
+
+  const upcomingConfirmed = reservations.filter(
+    (r) => r.status === ReservationStatus.CONFIRMED && r.date >= todayDate
   );
+  const todayConfirmed = upcomingConfirmed.find((r) => r.date === todayDate);
   if (todayConfirmed) {
     return todayConfirmed;
   }
 
-  return reservations.find((r) => r.status === ReservationStatus.CONFIRMED) ?? null;
+  return upcomingConfirmed[0] ?? null;
 }
 
 function pickNextReservation(
@@ -119,6 +128,7 @@ function pickNextReservation(
   const candidates = reservations.filter(
     (r) =>
       r.status === ReservationStatus.CONFIRMED &&
+      r.date >= todayDate &&
       (!activeReservation || r._id !== activeReservation._id)
   );
   if (candidates.length === 0) return null;
@@ -131,6 +141,72 @@ function pickNextReservation(
     const bMs = b.startTime ? Date.parse(b.startTime) : Number.POSITIVE_INFINITY;
     return aMs - bMs;
   })[0] ?? null;
+}
+
+async function expireStalePastReservations(todayDate: string, now: Date): Promise<void> {
+  const pastConfirmed = await Reservation.find({
+    date: { $lt: todayDate },
+    status: ReservationStatus.CONFIRMED,
+  })
+    .select('_id tableId date time startTime endTime')
+    .lean();
+
+  if (pastConfirmed.length === 0) {
+    return;
+  }
+
+  const nowMs = now.getTime();
+  const expiredIds: string[] = [];
+  const affectedTableIds = new Set<string>();
+
+  for (const r of pastConfirmed) {
+    const fallback = computeDiningInterval(r.date, r.time);
+    const startMs =
+      r.startTime instanceof Date
+        ? r.startTime.getTime()
+        : fallback?.startTime.getTime() ?? Number.NaN;
+    const endMs =
+      r.endTime instanceof Date
+        ? r.endTime.getTime()
+        : fallback?.endTime.getTime() ?? Number.NaN;
+
+    const graceMs = Number.isFinite(startMs) ? startMs + RESERVATION_HOLD_GRACE_MS : 0;
+    const effectiveEndMs = Number.isFinite(endMs) ? Math.max(graceMs, endMs) : graceMs;
+
+    if (nowMs > effectiveEndMs && r._id) {
+      expiredIds.push(String(r._id));
+      if (r.tableId) {
+        affectedTableIds.add(String(r.tableId));
+      }
+    }
+  }
+
+  if (expiredIds.length === 0) {
+    return;
+  }
+
+  await Reservation.updateMany(
+    { _id: { $in: expiredIds }, status: ReservationStatus.CONFIRMED },
+    { $set: { status: ReservationStatus.CANCELLED } }
+  );
+
+  for (const tblId of affectedTableIds) {
+    const remainingUpcoming = await Reservation.countDocuments({
+      tableId: tblId,
+      date: { $gte: todayDate },
+      status: { $in: [ReservationStatus.CONFIRMED, ReservationStatus.CHECKED_IN] },
+    });
+    if (remainingUpcoming === 0) {
+      await Table.findOneAndUpdate(
+        {
+          _id: tblId,
+          status: TABLE_STATUS.RESERVED,
+          $or: [{ holdExpiresAt: null }, { holdExpiresAt: { $lte: now } }],
+        },
+        { $set: { status: TABLE_STATUS.AVAILABLE, holdExpiresAt: null } }
+      );
+    }
+  }
 }
 
 function toIsoOrNull(value: Date | string | null | undefined): string | null {
@@ -149,7 +225,10 @@ export async function GET(request: NextRequest) {
 
     await connectDB();
 
+    const now = new Date();
     const todayDate = getVietnamTodayDate();
+
+    await expireStalePastReservations(todayDate, now);
 
     const [tables, activeReservations] = await Promise.all([
       Table.find({}).sort({ tableNumber: 1 }).lean(),
@@ -157,6 +236,7 @@ export async function GET(request: NextRequest) {
         status: {
           $in: [ReservationStatus.CONFIRMED, ReservationStatus.CHECKED_IN],
         },
+        $or: [{ status: ReservationStatus.CHECKED_IN }, { date: { $gte: todayDate } }],
       })
         .sort({ date: 1, time: 1, updatedAt: -1, createdAt: -1 })
         .lean(),
@@ -178,45 +258,83 @@ export async function GET(request: NextRequest) {
       CLEANING: 0,
     };
 
-    const enrichedTables = tables.map((table) => {
-      const normalizedStatus: TableStatusValue =
-        normalizeTableStatus(table.status) ?? TABLE_STATUS.AVAILABLE;
-      counts[normalizedStatus] += 1;
+    const nowMs = now.getTime();
+    const enrichedTables = await Promise.all(
+      tables.map(async (table) => {
+        let normalizedStatus: TableStatusValue =
+          normalizeTableStatus(table.status) ?? TABLE_STATUS.AVAILABLE;
+        const tableReservations = reservationsByTableId.get(String(table._id)) ?? [];
 
-      const tableReservations = reservationsByTableId.get(String(table._id)) ?? [];
-      const activeReservation = pickPrimaryReservation(tableReservations, todayDate);
-      const nextReservation =
-        normalizedStatus === TABLE_STATUS.SEATED || normalizedStatus === TABLE_STATUS.CLEANING
-          ? pickNextReservation(tableReservations, activeReservation, todayDate)
-          : null;
-      const timingMeta = computeTableTimingMeta({
-        tableStatus: normalizedStatus,
-        tableUpdatedAt: table.updatedAt ?? null,
-        activeReservation,
-      });
+        // Chỉ tự động chuyển bàn AVAILABLE -> RESERVED khi tới giờ khách đặt hôm nay mà chưa Check-in;
+        // không tự động động vào các trạng thái khác (SEATED, CLEANING, AVAILABLE).
+        if (normalizedStatus === TABLE_STATUS.AVAILABLE) {
+          const dueReservation = findDueConfirmedReservationForAutoHold(
+            tableReservations,
+            todayDate,
+            nowMs
+          );
+          if (dueReservation) {
+            const autoReservedTable = await Table.findOneAndUpdate(
+              { _id: table._id, status: TABLE_STATUS.AVAILABLE },
+              { $set: { status: TABLE_STATUS.RESERVED, holdExpiresAt: null } },
+              { new: true }
+            ).lean();
+            if (autoReservedTable) {
+              normalizedStatus = TABLE_STATUS.RESERVED;
+            }
+          }
+        }
 
-      return {
-        _id: String(table._id),
-        tableNumber: table.tableNumber || '',
-        capacity: table.capacity,
-        zoneName: table.zoneName || 'Khu vực chính',
-        status: normalizedStatus,
-        qrToken: table.qrToken ?? null,
-        activeReservation,
-        nextReservation,
-        reservations: tableReservations,
-        startTime: timingMeta.startTime,
-        endTime: timingMeta.endTime,
-        diningStartAt: timingMeta.diningStartAt,
-        diningEndAt: timingMeta.diningEndAt,
-        graceExpiresAt: timingMeta.graceExpiresAt,
-        cleaningStartedAt: toIsoOrNull(table.cleaningStartedAt),
-        cleaningDeadlineAt: toIsoOrNull(table.cleaningDeadlineAt),
-        cleaningType: table.cleaningType ?? null,
-        createdAt: table.createdAt ?? null,
-        updatedAt: table.updatedAt ?? null,
-      };
-    });
+        counts[normalizedStatus] += 1;
+
+        const activeReservation = pickPrimaryReservation(
+          tableReservations,
+          todayDate,
+          normalizedStatus
+        );
+        const nextReservation =
+          normalizedStatus === TABLE_STATUS.SEATED || normalizedStatus === TABLE_STATUS.CLEANING
+            ? pickNextReservation(tableReservations, activeReservation, todayDate)
+            : null;
+        const timingMeta = computeTableTimingMeta({
+          tableStatus: normalizedStatus,
+          tableUpdatedAt: table.updatedAt ?? null,
+          tableSeatedAt: (table as { seatedAt?: Date | null }).seatedAt ?? null,
+          tableHoldExpiresAt:
+            normalizedStatus === TABLE_STATUS.RESERVED
+              ? ((table as { holdExpiresAt?: Date | null }).holdExpiresAt ?? null)
+              : null,
+          activeReservation,
+        });
+
+        return {
+          _id: String(table._id),
+          tableNumber: table.tableNumber || '',
+          capacity: table.capacity,
+          zoneName: table.zoneName || 'Khu vực chính',
+          status: normalizedStatus,
+          qrToken: table.qrToken ?? null,
+          seatedAt: toIsoOrNull((table as { seatedAt?: Date | null }).seatedAt),
+          holdExpiresAt:
+            normalizedStatus === TABLE_STATUS.RESERVED
+              ? toIsoOrNull((table as { holdExpiresAt?: Date | null }).holdExpiresAt)
+              : null,
+          activeReservation,
+          nextReservation,
+          reservations: tableReservations,
+          startTime: timingMeta.startTime,
+          endTime: timingMeta.endTime,
+          diningStartAt: timingMeta.diningStartAt,
+          diningEndAt: timingMeta.diningEndAt,
+          graceExpiresAt: timingMeta.graceExpiresAt,
+          cleaningStartedAt: toIsoOrNull(table.cleaningStartedAt),
+          cleaningDeadlineAt: toIsoOrNull(table.cleaningDeadlineAt),
+          cleaningType: table.cleaningType ?? null,
+          createdAt: table.createdAt ?? null,
+          updatedAt: table.updatedAt ?? null,
+        };
+      })
+    );
 
     return NextResponse.json(
       {
@@ -270,6 +388,7 @@ export async function PATCH(request: NextRequest) {
     const nextStatus = normalizeTableStatus(body.nextStatus ?? body.status);
     const reservationId =
       typeof body.reservationId === 'string' ? body.reservationId.trim() : '';
+    const isWalkIn = body.isWalkIn === true;
     const customerName =
       typeof body.customerName === 'string' ? body.customerName.trim() : '';
     const phone = typeof body.phone === 'string' ? body.phone.trim() : '';
@@ -321,7 +440,10 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    const now = new Date();
     const todayDate = getVietnamTodayDate();
+    await expireStalePastReservations(todayDate, now);
+
     const targetReservationStatus = getReservationStatusForTransition(
       nextStatus,
       previousStatus
@@ -330,10 +452,25 @@ export async function PATCH(request: NextRequest) {
     let updatedReservation: ActiveReservationSummary | null = null;
     let walkInCustomer: { customerName: string; phone: string } | null = null;
 
-    if (nextStatus === TABLE_STATUS.SEATED) {
+    if (nextStatus === TABLE_STATUS.RESERVED) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            'Trạng thái giữ bàn (RESERVED) được hệ thống tự động chuyển khi tới giờ hẹn mà khách chưa Check-in; nhân viên chỉ bấm Check-in khi khách tới.',
+        },
+        { status: 400 }
+      );
+    } else if (nextStatus === TABLE_STATUS.SEATED) {
       if (!table.qrToken || !table.qrToken.trim()) {
         table.qrToken = generateTableQrToken(table.tableNumber);
       }
+
+      table.seatedAt = now;
+      table.holdExpiresAt = null;
+      table.cleaningStartedAt = null;
+      table.cleaningDeadlineAt = null;
+      table.cleaningType = null;
 
       if (reservationId) {
         const matchedReservation = await Reservation.findOne({
@@ -353,34 +490,50 @@ export async function PATCH(request: NextRequest) {
         }
 
         matchedReservation.status = ReservationStatus.CHECKED_IN;
-        matchedReservation.checkInTime = new Date();
+        matchedReservation.checkInTime = now;
         await matchedReservation.save();
         updatedReservation = toReservationSummary(matchedReservation);
-      } else {
-        const todayConfirmed = await Reservation.findOne({
+      } else if (!isWalkIn) {
+        // Chỉ tự ghép đơn CONFIRMED hôm nay nếu giờ hẹn nằm gần hiện tại (-60p .. +60p), tránh cướp lịch buổi tối (VD 20:00)
+        const todayConfirmedList = await Reservation.find({
           tableId: table._id,
           date: todayDate,
           status: ReservationStatus.CONFIRMED,
-        }).sort({ updatedAt: -1, createdAt: -1 });
+        }).sort({ startTime: 1, time: 1 });
 
-        if (todayConfirmed) {
-          todayConfirmed.status = ReservationStatus.CHECKED_IN;
-          todayConfirmed.checkInTime = new Date();
-          await todayConfirmed.save();
-          updatedReservation = toReservationSummary(todayConfirmed);
+        const nowMs = now.getTime();
+        const dueTodayConfirmed = todayConfirmedList.find((res) => {
+          const fallback = computeDiningInterval(res.date, res.time);
+          const startMs =
+            res.startTime instanceof Date
+              ? res.startTime.getTime()
+              : fallback?.startTime.getTime() ?? Number.NaN;
+          if (!Number.isFinite(startMs)) return false;
+          return nowMs >= startMs - 60 * 60 * 1000 && nowMs <= startMs + 60 * 60 * 1000;
+        });
+
+        if (dueTodayConfirmed) {
+          dueTodayConfirmed.status = ReservationStatus.CHECKED_IN;
+          dueTodayConfirmed.checkInTime = now;
+          await dueTodayConfirmed.save();
+          updatedReservation = toReservationSummary(dueTodayConfirmed);
         } else {
           walkInCustomer = {
             customerName: customerName || 'Khách tại bàn',
             phone,
           };
         }
+      } else {
+        walkInCustomer = {
+          customerName: customerName || 'Khách tại bàn',
+          phone,
+        };
       }
     } else if (
       previousStatus === TABLE_STATUS.SEATED &&
       nextStatus === TABLE_STATUS.CLEANING &&
       targetReservationStatus === ReservationStatus.COMPLETED
     ) {
-      const now = new Date();
       const [checkedInReservation, upcomingConfirmed] = await Promise.all([
         Reservation.findOne({
           tableId: table._id,
@@ -403,11 +556,15 @@ export async function PATCH(request: NextRequest) {
         const timing = computeTableTimingMeta({
           tableStatus: TABLE_STATUS.SEATED,
           tableUpdatedAt: table.updatedAt ?? null,
+          tableSeatedAt: table.seatedAt ?? null,
           activeReservation: summary,
         });
         diningEndMs = timing.diningEndAt ? Date.parse(timing.diningEndAt) : null;
-      } else if (table.updatedAt instanceof Date) {
-        diningEndMs = table.updatedAt.getTime() + DINING_DURATION_MS;
+      } else {
+        const walkInAnchor = table.seatedAt ?? table.updatedAt;
+        if (walkInAnchor instanceof Date) {
+          diningEndMs = walkInAnchor.getTime() + DINING_DURATION_MS;
+        }
       }
 
       const nextConfirmed = upcomingConfirmed[0]
@@ -428,6 +585,8 @@ export async function PATCH(request: NextRequest) {
       table.cleaningStartedAt = schedule.cleaningStartedAt;
       table.cleaningDeadlineAt = schedule.cleaningDeadlineAt;
       table.cleaningType = schedule.cleaningType;
+      table.seatedAt = null;
+      table.holdExpiresAt = null;
 
       await Reservation.updateMany(
         {
@@ -441,32 +600,32 @@ export async function PATCH(request: NextRequest) {
           },
         }
       );
-    } else if (
-      previousStatus === TABLE_STATUS.CLEANING &&
-      nextStatus === TABLE_STATUS.AVAILABLE
-    ) {
+    } else if (nextStatus === TABLE_STATUS.AVAILABLE) {
+      table.seatedAt = null;
+      table.holdExpiresAt = null;
       table.cleaningStartedAt = null;
       table.cleaningDeadlineAt = null;
       table.cleaningType = null;
-    } else if (
-      previousStatus === TABLE_STATUS.RESERVED &&
-      nextStatus === TABLE_STATUS.AVAILABLE &&
-      targetReservationStatus === ReservationStatus.CANCELLED &&
-      reservationId
-    ) {
-      const cancelledReservation = await Reservation.findOneAndUpdate(
-        {
-          _id: reservationId,
-          tableId: table._id,
-          status: ReservationStatus.CONFIRMED,
-        },
-        {
-          $set: { status: ReservationStatus.CANCELLED },
-        },
-        { new: true }
-      );
-      if (cancelledReservation) {
-        updatedReservation = toReservationSummary(cancelledReservation);
+
+      if (
+        previousStatus === TABLE_STATUS.RESERVED &&
+        targetReservationStatus === ReservationStatus.CANCELLED &&
+        reservationId
+      ) {
+        const cancelledReservation = await Reservation.findOneAndUpdate(
+          {
+            _id: reservationId,
+            tableId: table._id,
+            status: ReservationStatus.CONFIRMED,
+          },
+          {
+            $set: { status: ReservationStatus.CANCELLED },
+          },
+          { new: true }
+        );
+        if (cancelledReservation) {
+          updatedReservation = toReservationSummary(cancelledReservation);
+        }
       }
     }
 
@@ -478,6 +637,7 @@ export async function PATCH(request: NextRequest) {
       status: {
         $in: [ReservationStatus.CONFIRMED, ReservationStatus.CHECKED_IN],
       },
+      $or: [{ status: ReservationStatus.CHECKED_IN }, { date: { $gte: todayDate } }],
     })
       .sort({ date: 1, time: 1, updatedAt: -1, createdAt: -1 })
       .lean();
@@ -485,7 +645,11 @@ export async function PATCH(request: NextRequest) {
     const reservationSummaries = activeTableReservations.map((res) =>
       toReservationSummary(res)
     );
-    const activeReservation = pickPrimaryReservation(reservationSummaries, todayDate);
+    const activeReservation = pickPrimaryReservation(
+      reservationSummaries,
+      todayDate,
+      nextStatus
+    );
     const nextReservation =
       nextStatus === TABLE_STATUS.SEATED || nextStatus === TABLE_STATUS.CLEANING
         ? pickNextReservation(reservationSummaries, activeReservation, todayDate)
@@ -493,6 +657,8 @@ export async function PATCH(request: NextRequest) {
     const timingMeta = computeTableTimingMeta({
       tableStatus: nextStatus,
       tableUpdatedAt: table.updatedAt ?? new Date(),
+      tableSeatedAt: table.seatedAt ?? null,
+      tableHoldExpiresAt: table.holdExpiresAt ?? null,
       activeReservation,
     });
 
@@ -508,6 +674,8 @@ export async function PATCH(request: NextRequest) {
             zoneName: table.zoneName || 'Khu vực chính',
             status: nextStatus,
             qrToken: table.qrToken ?? null,
+            seatedAt: toIsoOrNull(table.seatedAt),
+            holdExpiresAt: toIsoOrNull(table.holdExpiresAt),
             activeReservation,
             nextReservation,
             reservations: reservationSummaries,

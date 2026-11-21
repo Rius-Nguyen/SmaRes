@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/app/lib/db';
 import {
-  BOOKING_MIN_ADVANCE_MS,
   DINING_DURATION_MS,
   computeSlotBlockInterval,
   doDateIntervalsOverlap,
   doTimeSlotsOverlap,
+  evaluatePhysicalTableSlotBlock,
   extendEndTimeWithCleaningBuffer,
   parseVietnamDateTime,
 } from '@/app/lib/reservationHelpers';
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
 
     const [tables, sameDayReservations, sameDayLocks] = await Promise.all([
       Table.find({ capacity: { $gte: guests } })
-        .select('_id tableNumber capacity zoneName status cleaningDeadlineAt updatedAt')
+        .select('_id tableNumber capacity zoneName status seatedAt holdExpiresAt cleaningDeadlineAt updatedAt')
         .sort({ tableNumber: 1 })
         .lean(),
       Reservation.find({
@@ -104,6 +104,9 @@ export async function GET(request: NextRequest) {
     const requestedStartMs = requestedBlockInterval
       ? requestedBlockInterval.startTime.getTime()
       : parseVietnamDateTime(date, time);
+    const requestedEndMs = requestedBlockInterval
+      ? requestedBlockInterval.endTime.getTime()
+      : requestedStartMs + DINING_DURATION_MS;
     const nowMs = now.getTime();
 
     const availabilityList = tables.map((table) => {
@@ -115,23 +118,25 @@ export async function GET(request: NextRequest) {
       const isLocked = otherLockedUntil !== null;
       const lockedUntil = otherLockedUntil ?? ownLockedUntil ?? null;
 
-      // Kiểm tra trạng thái CLEANING chưa dọn xong trước giờ hẹn mới
-      const cleaningDeadlineMs = table.cleaningDeadlineAt
-        ? new Date(table.cleaningDeadlineAt).getTime()
-        : Number.NaN;
-      const blockedByCleaning =
-        table.status === 'CLEANING' &&
-        Number.isFinite(cleaningDeadlineMs) &&
-        cleaningDeadlineMs > requestedStartMs;
+      const physicalBlock = evaluatePhysicalTableSlotBlock({
+        tableStatus: table.status,
+        tableSeatedAt: (table as { seatedAt?: Date | string | null }).seatedAt ?? null,
+        tableUpdatedAt: table.updatedAt ?? null,
+        tableCleaningDeadlineAt: table.cleaningDeadlineAt ?? null,
+        tableHoldExpiresAt: (table as { holdExpiresAt?: Date | string | null }).holdExpiresAt ?? null,
+        requestedStartMs,
+        requestedEndMs,
+        nowMs,
+      });
 
-      // Kiểm tra bàn đang SEATED quá 150 phút mà khung giờ mới sát hiện tại (chưa kịp sẵn sàng trong +30p)
-      const tableUpdatedMs = table.updatedAt ? new Date(table.updatedAt).getTime() : Number.NaN;
-      const isSeatedOverdue =
-        table.status === 'SEATED' &&
-        Number.isFinite(tableUpdatedMs) &&
-        nowMs > tableUpdatedMs + DINING_DURATION_MS;
-      const blockedByOverdueSeated =
-        isSeatedOverdue && requestedStartMs < nowMs + BOOKING_MIN_ADVANCE_MS;
+      const isAvailable = !isBooked && !isLocked && !physicalBlock.blocked;
+      const unavailableReason = isBooked
+        ? 'BOOKED'
+        : physicalBlock.blocked
+          ? physicalBlock.reason
+          : isLocked
+            ? 'LOCKED'
+            : null;
 
       return {
         id: tableKey,
@@ -139,11 +144,12 @@ export async function GET(request: NextRequest) {
         capacity: table.capacity,
         zoneName: table.zoneName || 'Khu vực chính',
         status: table.status,
-        isBooked,
+        isBooked: isBooked || physicalBlock.blocked,
         isLocked,
         isLockedByCurrentSession,
         lockedUntil,
-        isAvailable: !isBooked && !isLocked && !blockedByCleaning && !blockedByOverdueSeated,
+        unavailableReason,
+        isAvailable,
       };
     });
 

@@ -238,6 +238,7 @@ export default function StaffOrdersPage() {
   const [updatingOrderIds, setUpdatingOrderIds] = useState<string[]>([]);
   const [updatingCallIds, setUpdatingCallIds] = useState<string[]>([]);
   const [reloadNonce, setReloadNonce] = useState<number>(0);
+  const [cancelOrderTarget, setCancelOrderTarget] = useState<StaffOrder | null>(null);
 
   const isMountedRef = useRef<boolean>(true);
   const hasConnectedSseOnceRef = useRef<boolean>(false);
@@ -1133,9 +1134,7 @@ export default function StaffOrdersPage() {
                               <button
                                 type="button"
                                 disabled={isMutating}
-                                onClick={() =>
-                                  void handleUpdateOrderStatus(order._id, 'CANCELLED')
-                                }
+                                onClick={() => setCancelOrderTarget(order)}
                                 className="min-h-[38px] px-3 py-1.5 rounded-xl bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-60"
                               >
                                 Hủy đơn
@@ -1158,9 +1157,7 @@ export default function StaffOrdersPage() {
                               <button
                                 type="button"
                                 disabled={isMutating}
-                                onClick={() =>
-                                  void handleUpdateOrderStatus(order._id, 'CANCELLED')
-                                }
+                                onClick={() => setCancelOrderTarget(order)}
                                 className="min-h-[38px] px-3 py-1.5 rounded-xl bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-60"
                               >
                                 Hủy đơn
@@ -1302,6 +1299,65 @@ export default function StaffOrdersPage() {
             </div>
           )}
         </section>
+      )}
+      {/* Modal xác nhận Hủy đơn hàng tránh bấm nhầm */}
+      {cancelOrderTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-xs px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cancel-order-modal-title"
+        >
+          <div className="bg-white rounded-3xl border border-[#ebe7df] shadow-2xl max-w-md w-full p-6 sm:p-7 space-y-4 text-center">
+            <div className="w-14 h-14 rounded-full bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mx-auto">
+              <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+
+            <h2 id="cancel-order-modal-title" className="text-xl font-serif font-bold text-[#1c1917]">
+              Xác nhận hủy đơn món?
+            </h2>
+
+            <p className="text-xs sm:text-sm text-[#57534e] leading-relaxed">
+              Bạn có chắc chắn muốn hủy đơn{' '}
+              <strong className="font-mono text-[#14532d]">
+                {cancelOrderTarget.orderCode || `#${cancelOrderTarget._id.slice(-6).toUpperCase()}`}
+              </strong>{' '}
+              ({cancelOrderTarget.tableNumber ? `Bàn ${cancelOrderTarget.tableNumber}` : 'Mang về'} •{' '}
+              <strong>{formatCurrency(cancelOrderTarget.totalAmount ?? cancelOrderTarget.totalPrice ?? 0)}</strong>)?
+            </p>
+
+            {cancelOrderTarget.status === 'COOKING' && (
+              <div className="rounded-xl bg-[#fffbeb] border border-[#fde68a] px-3.5 py-2.5 text-xs text-[#92400e] text-left">
+                <strong>Lưu ý quan trọng:</strong> Đơn này đang ở trạng thái <strong>COOKING (Bếp đang nấu)</strong>. Hãy báo lại Bếp KDS trước khi hủy.
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                disabled={updatingOrderIds.includes(cancelOrderTarget._id)}
+                onClick={() => setCancelOrderTarget(null)}
+                className="w-1/2 py-2.5 rounded-xl border border-[#d6d0c4] bg-white hover:bg-[#f5f2eb] text-xs sm:text-sm font-semibold text-[#1c1917] cursor-pointer disabled:opacity-60"
+              >
+                Không, giữ lại
+              </button>
+              <button
+                type="button"
+                disabled={updatingOrderIds.includes(cancelOrderTarget._id)}
+                onClick={() => {
+                  const targetId = cancelOrderTarget._id;
+                  setCancelOrderTarget(null);
+                  void handleUpdateOrderStatus(targetId, 'CANCELLED');
+                }}
+                className="w-1/2 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs sm:text-sm font-semibold shadow-sm cursor-pointer disabled:opacity-60"
+              >
+                Xác nhận hủy đơn
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );

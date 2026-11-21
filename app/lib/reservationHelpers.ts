@@ -337,7 +337,10 @@ function toValidDate(input: Date | string | number | null | undefined): Date | n
 export function computeTableTimingMeta(params: {
   tableStatus: string;
   tableUpdatedAt?: Date | string | null;
+  tableSeatedAt?: Date | string | null;
+  tableHoldExpiresAt?: Date | string | null;
   activeReservation?: {
+    status?: string;
     date?: string;
     time?: string;
     startTime?: Date | string | null;
@@ -345,17 +348,32 @@ export function computeTableTimingMeta(params: {
     checkInTime?: Date | string | null;
   } | null;
 }): TableTimingMeta {
-  const { tableStatus, tableUpdatedAt, activeReservation } = params;
+  const {
+    tableStatus,
+    tableUpdatedAt,
+    tableSeatedAt,
+    tableHoldExpiresAt,
+    activeReservation,
+  } = params;
+
+  const isConfirmedFutureUnchecked =
+    activeReservation?.status === 'CONFIRMED' && !activeReservation?.checkInTime;
+  const effectiveSeatedReservation =
+    tableStatus === 'SEATED' && activeReservation && !isConfirmedFutureUnchecked
+      ? activeReservation
+      : tableStatus !== 'SEATED'
+        ? activeReservation
+        : null;
 
   const fallbackInterval =
-    activeReservation?.date && activeReservation?.time
-      ? computeDiningInterval(activeReservation.date, activeReservation.time)
+    effectiveSeatedReservation?.date && effectiveSeatedReservation?.time
+      ? computeDiningInterval(effectiveSeatedReservation.date, effectiveSeatedReservation.time)
       : null;
 
-  const resolvedStart =
-    toValidDate(activeReservation?.startTime) ?? fallbackInterval?.startTime ?? null;
+  let resolvedStart =
+    toValidDate(effectiveSeatedReservation?.startTime) ?? fallbackInterval?.startTime ?? null;
   const resolvedEnd =
-    toValidDate(activeReservation?.endTime) ??
+    toValidDate(effectiveSeatedReservation?.endTime) ??
     (resolvedStart ? new Date(resolvedStart.getTime() + DINING_DURATION_MS) : null);
 
   let diningStartDate: Date | null = null;
@@ -363,20 +381,32 @@ export function computeTableTimingMeta(params: {
   let graceExpiresDate: Date | null = null;
 
   if (tableStatus === 'SEATED') {
-    if (activeReservation) {
-      diningStartDate = toValidDate(activeReservation.checkInTime) ?? resolvedStart ?? toValidDate(tableUpdatedAt);
+    if (effectiveSeatedReservation) {
+      diningStartDate =
+        toValidDate(effectiveSeatedReservation.checkInTime) ??
+        resolvedStart ??
+        toValidDate(tableSeatedAt) ??
+        toValidDate(tableUpdatedAt);
       diningEndDate =
         resolvedEnd ??
         (diningStartDate ? new Date(diningStartDate.getTime() + DINING_DURATION_MS) : null);
     } else {
-      // Walk-in không có reservation
-      diningStartDate = toValidDate(tableUpdatedAt);
+      // Walk-in không gắn reservation CHECKED_IN
+      diningStartDate = toValidDate(tableSeatedAt) ?? toValidDate(tableUpdatedAt);
       diningEndDate = diningStartDate
         ? new Date(diningStartDate.getTime() + DINING_DURATION_MS)
         : null;
     }
-  } else if (tableStatus === 'RESERVED' && resolvedStart) {
-    graceExpiresDate = new Date(resolvedStart.getTime() + RESERVATION_HOLD_GRACE_MS);
+  } else if (tableStatus === 'RESERVED') {
+    if (resolvedStart) {
+      graceExpiresDate = new Date(resolvedStart.getTime() + RESERVATION_HOLD_GRACE_MS);
+    } else {
+      const manualHoldExpiry = toValidDate(tableHoldExpiresAt);
+      if (manualHoldExpiry) {
+        graceExpiresDate = manualHoldExpiry;
+        resolvedStart = new Date(manualHoldExpiry.getTime() - RESERVATION_HOLD_GRACE_MS);
+      }
+    }
   }
 
   return {
@@ -565,4 +595,104 @@ export function evaluateCancellationWindow(
  */
 export function generateBookingCode(): string {
   return `RES-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+}
+
+export type PhysicalTableSlotBlockReason = 'SEATED' | 'CLEANING' | 'RESERVED_HOLD';
+
+/**
+ * Checks whether a physical table's live operational state (SEATED walk-in/dining,
+ * CLEANING buffer, or active manual RESERVED hold) overlaps [requestedStartMs, requestedEndMs).
+ */
+export function evaluatePhysicalTableSlotBlock(params: {
+  tableStatus?: string | null;
+  tableSeatedAt?: Date | string | null;
+  tableUpdatedAt?: Date | string | null;
+  tableCleaningDeadlineAt?: Date | string | null;
+  tableHoldExpiresAt?: Date | string | null;
+  requestedStartMs: number;
+  requestedEndMs: number;
+  nowMs?: number;
+}): {
+  blocked: boolean;
+  reason: PhysicalTableSlotBlockReason | null;
+} {
+  const { tableStatus, requestedStartMs, requestedEndMs } = params;
+  if (!Number.isFinite(requestedStartMs) || !Number.isFinite(requestedEndMs)) {
+    return { blocked: false, reason: null };
+  }
+
+  const nowMs = params.nowMs ?? Date.now();
+
+  if (tableStatus === 'CLEANING') {
+    const cleaningDeadline = toValidDate(params.tableCleaningDeadlineAt);
+    const cleaningEndMs = cleaningDeadline
+      ? cleaningDeadline.getTime()
+      : nowMs + BOOKING_MIN_ADVANCE_MS;
+    if (cleaningEndMs > requestedStartMs) {
+      return { blocked: true, reason: 'CLEANING' };
+    }
+    return { blocked: false, reason: null };
+  }
+
+  if (tableStatus === 'SEATED') {
+    const seatedStartDate =
+      toValidDate(params.tableSeatedAt) ?? toValidDate(params.tableUpdatedAt);
+    const rawSeatedStartMs = seatedStartDate ? seatedStartDate.getTime() : nowMs;
+    const seatedStartMs = Math.min(rawSeatedStartMs, nowMs);
+    const occupiedUntilMs = Math.max(
+      seatedStartMs + SLOT_BLOCK_DURATION_MS,
+      nowMs + BOOKING_MIN_ADVANCE_MS
+    );
+
+    if (requestedStartMs < occupiedUntilMs && requestedEndMs > seatedStartMs) {
+      return { blocked: true, reason: 'SEATED' };
+    }
+    return { blocked: false, reason: null };
+  }
+
+  if (tableStatus === 'RESERVED') {
+    const holdExpiresDate = toValidDate(params.tableHoldExpiresAt);
+    if (holdExpiresDate && holdExpiresDate.getTime() > nowMs) {
+      const holdBlockStartMs = Math.max(
+        holdExpiresDate.getTime() - RESERVATION_HOLD_GRACE_MS,
+        nowMs - RESERVATION_HOLD_GRACE_MS
+      );
+      const holdBlockEndMs = holdExpiresDate.getTime() + SLOT_BLOCK_DURATION_MS;
+      if (requestedStartMs < holdBlockEndMs && requestedEndMs > holdBlockStartMs) {
+        return { blocked: true, reason: 'RESERVED_HOLD' };
+      }
+    }
+  }
+
+  return { blocked: false, reason: null };
+}
+
+/**
+ * Checks whether an AVAILABLE table has a today CONFIRMED reservation whose
+ * scheduled arrival window [startTime, endTime) has begun, so the system can
+ * automatically move the table into RESERVED (hold) without manual staff action.
+ */
+export function findDueConfirmedReservationForAutoHold<
+  T extends {
+    date?: string;
+    time?: string;
+    status?: string;
+    startTime?: Date | string | null;
+    endTime?: Date | string | null;
+  },
+>(reservations: readonly T[], todayDate: string, nowMs: number = Date.now()): T | null {
+  for (const res of reservations) {
+    if (res.status !== 'CONFIRMED') continue;
+    if (res.date !== todayDate) continue;
+    const fallback = res.date && res.time ? computeDiningInterval(res.date, res.time) : null;
+    const startMs =
+      toValidDate(res.startTime)?.getTime() ?? fallback?.startTime.getTime() ?? Number.NaN;
+    const endMs =
+      toValidDate(res.endTime)?.getTime() ?? fallback?.endTime.getTime() ?? Number.NaN;
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) continue;
+    if (nowMs >= startMs && nowMs < endMs) {
+      return res;
+    }
+  }
+  return null;
 }
