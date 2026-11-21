@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/app/lib/db';
 import User from '@/app/models/User';
+import { validatePasswordStrength } from '@/app/lib/passwordSecurity';
 
 export async function POST(request: Request) {
   try {
@@ -17,7 +18,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. Validate định dạng email và độ dài mật khẩu
+    // 2. Validate định dạng email và độ mạnh mật khẩu (TK-199)
     const normalizedEmail = email.toLowerCase().trim();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(normalizedEmail)) {
@@ -27,9 +28,10 @@ export async function POST(request: Request) {
       );
     }
 
-    if (password.length < 6) {
+    const passwordCheck = validatePasswordStrength(password);
+    if (!passwordCheck.valid) {
       return NextResponse.json(
-        { success: false, message: 'Mật khẩu phải có ít nhất 6 ký tự.' },
+        { success: false, message: passwordCheck.message },
         { status: 400 }
       );
     }

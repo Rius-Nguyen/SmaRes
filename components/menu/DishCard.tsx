@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { formatMoney } from '@/app/lib/format';
 import { MenuItemData } from '@/app/lib/menuInitialData';
@@ -38,11 +38,32 @@ export default function DishCard({
   const isSpecialLocked = !isSoldOut && Boolean(dish.isPreOrderOnly) && !hasActiveBooking;
   const isCompact = variant === 'compact';
 
+  const [justAdded, setJustAdded] = useState(false);
+  const popTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (popTimerRef.current) {
+        clearTimeout(popTimerRef.current);
+      }
+    };
+  }, []);
+
   const imageSrc = dish.imageUrl?.trim() || '/foods/pho_bo2.jpg';
   const isExternalOrData =
     imageSrc.startsWith('http://') ||
     imageSrc.startsWith('https://') ||
     imageSrc.startsWith('data:');
+
+  const triggerAddFeedback = () => {
+    setJustAdded(true);
+    if (popTimerRef.current) {
+      clearTimeout(popTimerRef.current);
+    }
+    popTimerRef.current = setTimeout(() => {
+      setJustAdded(false);
+    }, 850);
+  };
 
   const handlePrimaryAction = () => {
     if (isSoldOut) return;
@@ -52,9 +73,11 @@ export default function DishCard({
     }
     if (onCustomize) {
       onCustomize(dish);
+      triggerAddFeedback();
       return;
     }
     onAddToCart?.(dish);
+    triggerAddFeedback();
   };
 
   const resolvedActionLabel =
@@ -62,12 +85,12 @@ export default function DishCard({
 
   return (
     <div
-      className={`group bg-white rounded-2xl border overflow-hidden flex flex-col justify-between transition-all duration-300 shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] ${
+      className={`interactive-card group bg-white rounded-2xl border overflow-hidden flex flex-col justify-between shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] ${
         isSoldOut
-          ? 'border-[#ebe7df] opacity-90'
+          ? 'border-[#e2e8e4] opacity-90'
           : dish.isPreOrderOnly
-          ? 'border-[#fcd34d] ring-1 ring-[#fef3c7] bg-gradient-to-b from-[#fffbeb]/40 to-white hover:shadow-[0_16px_32px_-4px_rgba(28,25,23,0.12)] hover:-translate-y-1'
-          : 'border-[#ebe7df] hover:border-[#14532d]/40 hover:shadow-[0_16px_32px_-4px_rgba(28,25,23,0.12)] hover:-translate-y-1'
+          ? 'border-[#fcd34d] ring-1 ring-[#fef3c7] bg-gradient-to-b from-[#fffbeb]/40 to-white hover:shadow-[0_16px_32px_-4px_rgba(28,25,23,0.12)]'
+          : 'border-[#e2e8e4] hover:border-[#155e42]/40 hover:shadow-[0_16px_32px_-4px_rgba(21,94,66,0.12)]'
       }`}
     >
       {/* Khung ảnh món ăn */}
@@ -78,15 +101,15 @@ export default function DishCard({
           fill
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
           unoptimized={isExternalOrData}
-          className={`object-cover transition-transform duration-500 ease-out ${
-            isSoldOut ? 'grayscale opacity-70 scale-[1.01]' : 'group-hover:scale-105'
+          className={`card-zoom-img object-cover ${
+            isSoldOut ? 'grayscale opacity-70 scale-[1.01]' : ''
           }`}
         />
 
         {/* Lớp phủ kính mờ xám khi món tạm hết */}
         {isSoldOut && (
           <div className="absolute inset-0 bg-stone-900/45 backdrop-blur-[2px] flex items-center justify-center p-4 z-10">
-            <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#1c1917]/90 text-[#faf8f5] text-xs font-bold tracking-wide border border-white/20 shadow-lg">
+            <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#1c1917]/90 text-[#f4f7f5] text-xs font-bold tracking-wide border border-white/20 shadow-lg">
               <svg
                 className="w-3.5 h-3.5 text-[#fbbf24]"
                 viewBox="0 0 24 24"
@@ -122,7 +145,7 @@ export default function DishCard({
           </div>
         ) : (
           showCategoryBadge && (
-            <div className="absolute top-3 left-3 z-20 bg-[#1c1917]/75 text-[#faf8f5] text-[11px] font-semibold px-2.5 py-1 rounded-full backdrop-blur-xs">
+            <div className="absolute top-3 left-3 z-20 bg-[#1c1917]/75 text-[#f4f7f5] text-[11px] font-semibold px-2.5 py-1 rounded-full backdrop-blur-xs">
               {dish.category}
             </div>
           )
@@ -130,7 +153,10 @@ export default function DishCard({
 
         {/* Badge số lượng đã chọn trong giỏ */}
         {cartQuantity > 0 && (
-          <div className="absolute top-3 right-3 z-20 bg-[#14532d] text-white text-xs font-semibold px-2.5 py-1 rounded-full shadow-md flex items-center gap-1 border border-emerald-400/30">
+          <div
+            key={cartQuantity}
+            className="animate-cart-pop absolute top-3 right-3 z-20 bg-[#155e42] text-white text-xs font-semibold px-2.5 py-1 rounded-full shadow-md flex items-center gap-1 border border-emerald-400/30"
+          >
             <svg
               className="w-3 h-3 text-emerald-200"
               viewBox="0 0 24 24"
@@ -156,7 +182,7 @@ export default function DishCard({
               } leading-snug transition-colors line-clamp-2 ${
                 isSoldOut
                   ? 'text-stone-500'
-                  : 'text-[#1c1917] group-hover:text-[#14532d]'
+                  : 'text-[#1c1917] group-hover:text-[#155e42]'
               }`}
             >
               {dish.name}
@@ -244,7 +270,7 @@ export default function DishCard({
             <button
               type="button"
               onClick={handlePrimaryAction}
-              className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-[#92400e] bg-[#fffbeb] hover:bg-[#fef3c7] border border-[#fcd34d] flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+              className="interactive-btn w-full py-2.5 px-4 rounded-xl text-xs font-bold text-[#92400e] bg-[#fffbeb] hover:bg-[#fef3c7] border border-[#fcd34d] flex items-center justify-center gap-1.5 shadow-xs"
             >
               <svg
                 className="w-3.5 h-3.5 text-[#d97706]"
@@ -263,9 +289,12 @@ export default function DishCard({
             <div className="w-full flex items-center justify-between bg-[#f0fdf4] rounded-xl p-1.5 border border-[#bbf7d0]">
               <button
                 type="button"
-                onClick={() => onDecrement(dish)}
+                onClick={() => {
+                  onDecrement(dish);
+                  triggerAddFeedback();
+                }}
                 aria-label={`Giảm số lượng ${dish.name}`}
-                className="w-9 h-9 rounded-lg bg-white text-[#14532d] font-bold shadow-xs hover:bg-stone-100 flex items-center justify-center text-base transition-colors cursor-pointer"
+                className="interactive-btn w-9 h-9 rounded-lg bg-white text-[#155e42] font-bold shadow-xs hover:bg-stone-100 flex items-center justify-center text-base"
               >
                 <svg
                   className="w-4 h-4"
@@ -277,14 +306,20 @@ export default function DishCard({
                   <line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
               </button>
-              <span className="font-bold text-xs sm:text-sm text-[#14532d] px-3">
+              <span
+                key={cartQuantity}
+                className="animate-cart-pop font-bold text-xs sm:text-sm text-[#155e42] px-3"
+              >
                 {cartQuantity} phần
               </span>
               <button
                 type="button"
-                onClick={() => onIncrement(dish)}
+                onClick={() => {
+                  onIncrement(dish);
+                  triggerAddFeedback();
+                }}
                 aria-label={`Tăng số lượng ${dish.name}`}
-                className="w-9 h-9 rounded-lg bg-[#14532d] text-white font-bold shadow-xs hover:bg-[#15803d] flex items-center justify-center text-base transition-colors cursor-pointer"
+                className="interactive-btn w-9 h-9 rounded-lg bg-[#155e42] text-white font-bold shadow-xs hover:bg-[#0e3f2d] flex items-center justify-center text-base"
               >
                 <svg
                   className="w-4 h-4"
@@ -302,23 +337,42 @@ export default function DishCard({
             <button
               type="button"
               onClick={handlePrimaryAction}
-              className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs active:scale-[0.99] ${
-                dish.isPreOrderOnly
-                  ? 'bg-[#d97706] hover:bg-[#b45309] text-white shadow-sm'
-                  : 'bg-[#14532d] hover:bg-[#15803d] text-white shadow-sm'
+              className={`interactive-btn w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm ${
+                justAdded
+                  ? 'bg-[#0e3f2d] text-amber-200 animate-cart-pop ring-2 ring-[#155e42]/30'
+                  : dish.isPreOrderOnly
+                  ? 'bg-[#d97706] hover:bg-[#b45309] text-white'
+                  : 'bg-[#155e42] hover:bg-[#0e3f2d] text-white'
               }`}
             >
-              <svg
-                className="w-4 h-4"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-              >
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              <span>{resolvedActionLabel}</span>
+              {justAdded ? (
+                <>
+                  <svg
+                    className="w-4 h-4 text-amber-200"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                  >
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  <span>Đã thêm vào giỏ</span>
+                </>
+              ) : (
+                <>
+                  <svg
+                    className="w-4 h-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                  >
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  <span>{resolvedActionLabel}</span>
+                </>
+              )}
             </button>
           )}
         </div>

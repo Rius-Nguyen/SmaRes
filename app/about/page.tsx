@@ -1,11 +1,15 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import Image from 'next/image';
+import {
+  AboutContactSection,
+  AboutHeroActions,
+  AboutTermsActions,
+} from '@/components/AboutInteractiveSections';
 
 export const metadata: Metadata = {
-  title: 'Về Chúng Tôi | SmaRes Gastronomy',
+  title: 'Về Chúng Tôi & Liên Hệ | SmaRes Gastronomy',
   description:
-    'Khám phá câu chuyện di sản ẩm thực Việt Nam đương đại, triết lý thảo mộc bản địa và không gian phòng tiệc tinh tế tại SmaRes.',
+    'Khám phá câu chuyện di sản ẩm thực Việt Nam đương đại, thông tin liên hệ tại Đà Nẵng và chính sách bảo mật tại SmaRes.',
 };
 
 const CULINARY_PILLARS = [
@@ -44,33 +48,6 @@ const CULINARY_PILLARS = [
   },
 ] as const;
 
-const DINING_ZONES = [
-  {
-    name: 'Khu Vực VIP Sang Trọng',
-    capacity: '8 – 10 khách / bàn tròn riêng tư',
-    description:
-      'Không gian tách biệt với ánh sáng vàng ấm áp, cách âm chuẩn mực dành cho tiệc gia đình thân mật và tiếp đãi đối tác quan trọng.',
-    imageUrl: '/foods/table_vip.jpg',
-    tag: 'VIP Zone',
-  },
-  {
-    name: 'Sảnh Trung Tâm Ấm Cúng',
-    capacity: '4 khách / bàn tiêu chuẩn',
-    description:
-      'Thiết kế mở hài hòa giữa chất liệu gỗ trầm và sắc ngọc lục bảo, mang lại bầu không khí sum vầy sôi nổi nhưng vẫn thư thái.',
-    imageUrl: '/foods/table_center.jpg',
-    tag: 'Sảnh Chính',
-  },
-  {
-    name: 'Cửa Sổ View Phố Lãng Mạn',
-    capacity: '2 khách / bàn đôi riêng tư',
-    description:
-      'Ô cửa kính toàn cảnh hướng về nhịp sống trung tâm Sài Gòn rực rỡ ánh đèn về đêm, lý tưởng cho những buổi hẹn hò đáng nhớ.',
-    imageUrl: '/foods/table_window.jpg',
-    tag: 'View Phố',
-  },
-] as const;
-
 export default function AboutPage() {
   return (
     <main className="min-h-screen bg-[#faf8f5] text-[#1c1917]">
@@ -97,23 +74,7 @@ export default function AboutPage() {
           <p className="mt-6 text-base sm:text-lg text-[#e7e5e4] max-w-2xl mx-auto leading-relaxed font-light">
             Tại SmaRes Gastronomy, mỗi món ăn là một tác phẩm kể câu chuyện vùng miền bằng nguyên liệu thảo mộc tinh tuyển, kết hợp trải nghiệm đặt bàn và phục vụ thông minh không gián đoạn.
           </p>
-          <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link
-              href="/booking"
-              className="interactive-btn inline-flex items-center justify-center gap-2 bg-[#14532d] hover:bg-[#15803d] text-white px-8 py-3.5 rounded-full font-semibold text-sm border border-[#22c55e]/30 shadow-[0_8px_24px_-4px_rgba(20,83,45,0.45)] w-full sm:w-auto"
-            >
-              <span>Đặt bàn trải nghiệm</span>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14m-7-7l7 7-7 7" />
-              </svg>
-            </Link>
-            <Link
-              href="/menu"
-              className="interactive-btn inline-flex items-center justify-center gap-2 bg-[#d97706] hover:bg-[#b45309] text-white px-8 py-3.5 rounded-full font-semibold text-sm shadow-[0_8px_20px_-4px_rgba(217,119,6,0.35)] w-full sm:w-auto"
-            >
-              <span>Khám phá thực đơn</span>
-            </Link>
-          </div>
+          <AboutHeroActions />
         </div>
       </section>
 
@@ -156,67 +117,12 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* 3. Không gian các phân khu bàn ăn */}
-      <section className="bg-[#f5f2eb] border-y border-[#ebe7df] py-16 sm:py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-12">
-            <div>
-              <span className="inline-block px-3 py-1 rounded-full bg-[#f0fdf4] border border-[#bbf7d0] text-[#14532d] text-xs font-bold uppercase tracking-widest mb-3">
-                Không gian kiến trúc
-              </span>
-              <h2 className="text-3xl sm:text-4xl font-serif font-bold text-[#1c1917] tracking-tight">
-                Ba Phân Khu Trải Nghiệm Độc Bản
-              </h2>
-            </div>
-            <Link
-              href="/booking/diagram"
-              className="inline-flex items-center gap-2 text-sm font-semibold text-[#14532d] hover:text-[#15803d] transition-colors"
-            >
-              <span>Xem sơ đồ bàn trực tiếp</span>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14m-7-7l7 7-7 7" />
-              </svg>
-            </Link>
-          </div>
+      {/* 3. Địa chỉ liên hệ & Hỗ trợ khách hàng */}
+      <AboutContactSection />
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {DINING_ZONES.map((zone) => (
-              <article
-                key={zone.name}
-                className="group bg-white rounded-2xl border border-[#ebe7df] overflow-hidden shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] hover:shadow-[0_16px_32px_-4px_rgba(28,25,23,0.12)] transition-all duration-300"
-              >
-                <div className="relative aspect-[4/3] bg-stone-100 overflow-hidden">
-                  <Image
-                    src={zone.imageUrl}
-                    alt={zone.name}
-                    fill
-                    sizes="(max-width: 768px) 100vw, 33vw"
-                    className="object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                  <span className="absolute top-3 left-3 px-3 py-1 rounded-full text-xs font-semibold bg-[#14532d]/90 text-white backdrop-blur-sm">
-                    {zone.tag}
-                  </span>
-                </div>
-                <div className="p-6 space-y-2">
-                  <h3 className="text-xl font-serif font-bold text-[#1c1917]">
-                    {zone.name}
-                  </h3>
-                  <p className="text-xs font-semibold text-[#d97706]">
-                    {zone.capacity}
-                  </p>
-                  <p className="text-sm text-[#57534e] leading-relaxed pt-1">
-                    {zone.description}
-                  </p>
-                </div>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* 4. Điều khoản sử dụng & Cam kết dịch vụ */}
-      <section id="terms" className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="bg-white rounded-2xl border border-[#ebe7df] p-6 sm:p-10 shadow-[0_4px_20px_-2px_rgba(28,25,23,0.05)] space-y-6">
+      {/* 4. Điều khoản sử dụng & Chính sách bảo mật */}
+      <section className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16 space-y-8">
+        <div id="terms" className="bg-white rounded-2xl border border-[#ebe7df] p-6 sm:p-10 shadow-[0_4px_20px_-2px_rgba(28,25,23,0.05)] space-y-6">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-[#f0fdf4] border border-[#bbf7d0] flex items-center justify-center text-[#14532d] shrink-0">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -252,21 +158,29 @@ export default function AboutPage() {
             <p className="text-xs text-[#78716c]">
               Cần tư vấn tổ chức tiệc riêng hoặc thực đơn đoàn? Đội ngũ SmaRes luôn sẵn sàng hỗ trợ.
             </p>
-            <div className="flex items-center gap-3">
-              <Link
-                href="/contact"
-                className="px-5 py-2.5 rounded-full border border-[#d6d0c4] bg-white hover:bg-[#f5f2eb] text-xs font-semibold text-[#1c1917] transition-colors"
-              >
-                Liên hệ tư vấn
-              </Link>
-              <Link
-                href="/booking"
-                className="px-5 py-2.5 rounded-full bg-[#14532d] hover:bg-[#0f3d21] text-white text-xs font-semibold transition-colors"
-              >
-                Đặt bàn ngay
-              </Link>
+            <AboutTermsActions />
+          </div>
+        </div>
+
+        <div id="privacy" className="bg-white rounded-2xl border border-[#ebe7df] p-6 sm:p-10 shadow-[0_4px_20px_-2px_rgba(28,25,23,0.05)] space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#fffbeb] border border-[#fde68a] flex items-center justify-center text-[#d97706] shrink-0">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#1c1917]">
+                Chính Sách Bảo Mật Thông Tin Khách Hàng
+              </h2>
+              <p className="text-xs text-[#78716c]">
+                Cam kết an toàn dữ liệu và quyền riêng tư người dùng
+              </p>
             </div>
           </div>
+          <p className="text-sm text-[#57534e] leading-relaxed">
+            SmaRes Gastronomy cam kết bảo mật tuyệt đối họ tên, số điện thoại, email và lịch sử đặt bàn của Quý khách. Thông tin chỉ được sử dụng để xác nhận bàn ăn, chuẩn bị thực đơn dị ứng theo lưu ý cá nhân và nâng cao chất lượng phục vụ tại nhà hàng; phiên đăng nhập được bảo vệ bằng cookie HttpOnly mã hóa an toàn.
+          </p>
         </div>
       </section>
     </main>

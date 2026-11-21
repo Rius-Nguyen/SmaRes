@@ -3,7 +3,20 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import BookingStepper from '@/components/BookingStepper';
+import WheelTimePicker, {
+  isSlotDisabledForDate,
+  resolveNearestValidSlot,
+} from '@/components/booking/WheelTimePicker';
+import {
+  getOperatingHoursForDate,
+  isWithinOperatingHoursForDate,
+} from '@/app/lib/reservationHelpers';
+import {
+  readActiveTableLock,
+  releaseClientTableLock,
+} from '@/app/lib/bookingLockClient';
 import { useCart, type BookingInfo } from '@/app/context/CartContext';
+import { useToast } from '@/components/ui/Toast';
 
 interface StoredUserPreview {
   name?: string;
@@ -20,17 +33,6 @@ interface BookingFormState {
   guests: number;
   note: string;
 }
-
-const TIME_SLOTS = [
-  { value: '11:30', label: '11:30 (Trưa)' },
-  { value: '12:00', label: '12:00 (Trưa)' },
-  { value: '12:30', label: '12:30 (Trưa)' },
-  { value: '18:00', label: '18:00 (Tối)' },
-  { value: '18:30', label: '18:30 (Tối)' },
-  { value: '19:00', label: '19:00 (Tối)' },
-  { value: '19:30', label: '19:30 (Tối)' },
-  { value: '20:00', label: '20:00 (Tối)' },
-] as const;
 
 const GUEST_OPTIONS = [
   { value: 2, label: '2 người (Cặp đôi / Bạn bè)' },
@@ -91,12 +93,15 @@ function buildInitialFormState(
       ? bookingInfo.date
       : defaultDateStr;
 
+  const preferredTime = bookingInfo?.time || '19:00';
+  const resolvedTime = resolveNearestValidSlot(draftDate, preferredTime) || preferredTime;
+
   return {
     name: bookingInfo?.name || storedUser.name || '',
     phone: bookingInfo?.phone || storedUser.phone || '',
     email: bookingInfo?.email || storedUser.email || '',
     date: draftDate,
-    time: bookingInfo?.time || '19:00',
+    time: resolvedTime,
     guests: normalizeGuests(bookingInfo?.guests),
     note: bookingInfo?.note || '',
   };
@@ -128,8 +133,17 @@ function BookingStepOneForm({
       if (name === 'guests') {
         return { ...prev, guests: normalizeGuests(value) };
       }
+      if (name === 'date') {
+        const nextTime = resolveNearestValidSlot(value, prev.time);
+        return { ...prev, date: value, time: nextTime };
+      }
       return { ...prev, [name]: value };
     });
+    if (errorMsg) setErrorMsg('');
+  };
+
+  const handleTimeChange = (nextTime: string) => {
+    setFormData((prev) => ({ ...prev, time: nextTime }));
     if (errorMsg) setErrorMsg('');
   };
 
@@ -159,8 +173,15 @@ function BookingStepOneForm({
       setErrorMsg('Không thể chọn ngày trong quá khứ (theo giờ Việt Nam +07:00).');
       return;
     }
-    if (!formData.time) {
-      setErrorMsg('Vui lòng chọn khung giờ đến.');
+    if (!formData.time || !isWithinOperatingHoursForDate(formData.date, formData.time)) {
+      const hours = getOperatingHoursForDate(formData.date);
+      setErrorMsg(
+        `Khung giờ không nằm trong giờ mở cửa: ${hours.label}. Vui lòng chọn giờ phù hợp (bước 15 phút).`
+      );
+      return;
+    }
+    if (isSlotDisabledForDate(formData.date, formData.time)) {
+      setErrorMsg('Vui lòng đặt bàn trước giờ hẹn tối thiểu 30 phút (BR-RES-13).');
       return;
     }
     if (!Number.isInteger(normalizedGuests) || normalizedGuests < 1) {
@@ -182,7 +203,7 @@ function BookingStepOneForm({
   const hasCustomGuestValue = !GUEST_OPTIONS.some((opt) => opt.value === formData.guests);
 
   return (
-    <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
       <div>
         <label htmlFor="booking-name" className="block text-sm font-semibold text-stone-800 mb-2">
           Họ và tên *
@@ -194,7 +215,7 @@ function BookingStepOneForm({
           value={formData.name}
           onChange={handleFieldChange}
           placeholder="Ví dụ: Nguyễn Văn A"
-          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#14532d] focus:border-[#14532d] outline-none transition-all bg-white"
+          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#155e42] focus:border-[#155e42] outline-none transition-all bg-white"
           required
         />
       </div>
@@ -210,7 +231,7 @@ function BookingStepOneForm({
           value={formData.phone}
           onChange={handleFieldChange}
           placeholder="09xx xxx xxx"
-          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#14532d] focus:border-[#14532d] outline-none transition-all bg-white"
+          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#155e42] focus:border-[#155e42] outline-none transition-all bg-white"
           required
         />
       </div>
@@ -226,7 +247,7 @@ function BookingStepOneForm({
           value={formData.email}
           onChange={handleFieldChange}
           placeholder="nguyenvana@gmail.com"
-          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#14532d] focus:border-[#14532d] outline-none transition-all bg-white"
+          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#155e42] focus:border-[#155e42] outline-none transition-all bg-white"
         />
       </div>
 
@@ -241,31 +262,24 @@ function BookingStepOneForm({
           min={todayStr}
           value={formData.date}
           onChange={handleFieldChange}
-          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#14532d] focus:border-[#14532d] outline-none transition-all text-stone-800 bg-white"
+          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#155e42] focus:border-[#155e42] outline-none transition-all text-stone-800 bg-white"
           required
         />
       </div>
 
-      <div>
+      <div className="md:col-span-2">
         <label htmlFor="booking-time" className="block text-sm font-semibold text-stone-800 mb-2">
           Giờ đến *
         </label>
-        <select
+        <WheelTimePicker
           id="booking-time"
-          name="time"
+          selectedDate={formData.date}
           value={formData.time}
-          onChange={handleFieldChange}
-          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#14532d] focus:border-[#14532d] outline-none transition-all text-stone-800 bg-white"
-        >
-          {TIME_SLOTS.map((slot) => (
-            <option key={slot.value} value={slot.value}>
-              {slot.label}
-            </option>
-          ))}
-        </select>
+          onChange={handleTimeChange}
+        />
       </div>
 
-      <div>
+      <div className="md:col-span-2">
         <label htmlFor="booking-guests" className="block text-sm font-semibold text-stone-800 mb-2">
           Số lượng khách *
         </label>
@@ -274,7 +288,7 @@ function BookingStepOneForm({
           name="guests"
           value={String(formData.guests)}
           onChange={handleFieldChange}
-          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#14532d] focus:border-[#14532d] outline-none transition-all text-stone-800 bg-white"
+          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#155e42] focus:border-[#155e42] outline-none transition-all text-stone-800 bg-white"
         >
           {hasCustomGuestValue && (
             <option value={String(formData.guests)}>{formData.guests} người</option>
@@ -298,7 +312,7 @@ function BookingStepOneForm({
           onChange={handleFieldChange}
           rows={3}
           placeholder="Ví dụ: Ghế trẻ em, dị ứng hải sản, tổ chức sinh nhật, bàn yên tĩnh..."
-          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#14532d] focus:border-[#14532d] outline-none transition-all bg-white"
+          className="w-full px-4 py-3 rounded-xl border border-[#d6d0c4] text-sm focus:ring-2 focus:ring-[#155e42] focus:border-[#155e42] outline-none transition-all bg-white"
         />
       </div>
 
@@ -319,10 +333,10 @@ function BookingStepOneForm({
       <div className="md:col-span-2 mt-2">
         <button
           type="submit"
-          className="w-full flex items-center justify-center gap-2 bg-[#14532d] hover:bg-[#15803d] text-white font-semibold py-4 rounded-xl shadow-[0_8px_24px_-4px_rgba(20,83,45,0.45)] hover:shadow-[0_12px_28px_-4px_rgba(20,83,45,0.6)] transition-all text-base sm:text-lg cursor-pointer"
+          className="interactive-btn w-full flex items-center justify-center gap-2 bg-[#155e42] hover:bg-[#0e3f2d] text-white font-semibold py-3.5 sm:py-4 rounded-xl shadow-[0_8px_24px_-4px_rgba(21,94,66,0.45)] hover:shadow-[0_12px_28px_-4px_rgba(21,94,66,0.6)] text-sm sm:text-lg"
         >
           <span>Tiếp tục: Chọn vị trí bàn trên sơ đồ</span>
-          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M5 12h14" />
             <path d="m12 5 7 7-7 7" />
           </svg>
@@ -335,11 +349,21 @@ function BookingStepOneForm({
 export default function BookingPage() {
   const router = useRouter();
   const { bookingInfo, setBookingInfo, isLoaded } = useCart();
+  const { showToast } = useToast();
 
   const todayStr = getVietnamDateString(0);
   const tomorrowStr = getVietnamDateString(1);
 
-  const handleSaveDraft = (nextData: BookingFormState) => {
+  const handleSaveDraft = async (nextData: BookingFormState) => {
+    const activeLock = readActiveTableLock();
+    const slotChanged =
+      activeLock !== null &&
+      (activeLock.date !== nextData.date || activeLock.time !== nextData.time);
+
+    if (slotChanged && activeLock) {
+      await releaseClientTableLock(activeLock, 'USER_CANCELLED');
+    }
+
     setBookingInfo((prev) => ({
       ...prev,
       name: nextData.name,
@@ -349,27 +373,36 @@ export default function BookingPage() {
       time: nextData.time,
       guests: nextData.guests,
       note: nextData.note,
+      ...(slotChanged
+        ? {
+            tableId: undefined,
+            tableNumber: undefined,
+            tableType: undefined,
+            tableCapacity: undefined,
+          }
+        : {}),
     }));
+    showToast('Đã lưu thông tin đặt bàn! Đang chuyển sang chọn vị trí bàn.', 'success');
     router.push('/booking/diagram');
   };
 
   return (
-    <main className="flex-1 bg-[#faf8f5] text-[#1c1917] flex flex-col min-h-screen">
+    <main className="flex-1 bg-[#f4f7f5] text-[#1c1917] flex flex-col min-h-screen pb-24 sm:pb-16">
       {/* Banner */}
       <div
-        className="relative h-[34vh] md:h-[38vh] bg-cover bg-center flex items-center justify-center overflow-hidden"
+        className="relative h-[34vh] min-h-[220px] md:h-[38vh] bg-cover bg-center flex items-center justify-center overflow-hidden"
         style={{ backgroundImage: "url('/foods/hero-bg3.jpg')" }}
       >
-        <div className="absolute inset-0 bg-gradient-to-b from-black/75 via-black/60 to-[#0a1f14]/85" />
-        <div className="relative z-10 text-center text-white px-4 mt-4 max-w-3xl mx-auto">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#14532d]/70 border border-[#fbbf24]/40 text-[#fde68a] text-xs font-semibold uppercase tracking-widest mb-3 backdrop-blur-md">
+        <div className="absolute inset-0 bg-gradient-to-b from-black/75 via-black/60 to-[#0e3f2d]/85" />
+        <div className="relative z-10 text-center text-white px-4 pt-3 sm:pt-0 mt-2 sm:mt-4 max-w-3xl mx-auto">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#155e42]/80 border border-[#fbbf24]/40 text-[#fde68a] text-xs font-semibold uppercase tracking-widest mb-2.5 sm:mb-3 backdrop-blur-md">
             <span className="w-1.5 h-1.5 rounded-full bg-[#fbbf24]" />
             SmaRes Gastronomy
           </div>
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-serif font-bold text-white mb-3 tracking-tight">
+          <h1 className="text-2xl sm:text-4xl md:text-5xl font-serif font-bold text-white mb-2 sm:mb-3 tracking-tight leading-tight">
             Đặt Bàn Trực Tuyến
           </h1>
-          <p className="text-sm md:text-base text-stone-200 font-light max-w-xl mx-auto leading-relaxed">
+          <p className="text-xs sm:text-sm md:text-base text-stone-200 font-light max-w-xl mx-auto leading-relaxed">
             Hãy để chúng tôi chuẩn bị sẵn sàng cho trải nghiệm ẩm thực thượng hạng của bạn.
           </p>
         </div>
@@ -379,30 +412,30 @@ export default function BookingPage() {
       <BookingStepper currentStep={1} />
 
       {/* Nội dung Form */}
-      <div className="max-w-7xl mx-auto py-10 px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-3 gap-8 relative z-20 w-full">
+      <div className="max-w-7xl mx-auto py-7 sm:py-10 px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 relative z-20 w-full">
         {/* Cột trái: Form điền thông tin (chiếm 2 phần) */}
-        <div className="lg:col-span-2 bg-white rounded-2xl shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] p-8 md:p-10 border border-[#ebe7df]">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-2xl md:text-3xl font-serif font-bold text-[#14532d]">
+        <div className="lg:col-span-2 bg-white rounded-2xl shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)] p-5 sm:p-8 md:p-10 border border-[#e2e8e4]">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-serif font-bold text-[#155e42] leading-snug">
               1. Thông tin đặt bàn
             </h2>
-            <span className="text-xs sm:text-sm font-semibold px-3.5 py-1 bg-[#f0fdf4] text-[#15803d] rounded-full border border-[#bbf7d0]">
+            <span className="text-xs sm:text-sm font-semibold px-3 py-1 bg-[#f0fdf4] text-[#155e42] rounded-full border border-[#bbf7d0] shrink-0 whitespace-nowrap">
               Bước 1 / 4
             </span>
           </div>
-          <p className="text-stone-600 text-sm md:text-base mb-8 pb-4 border-b border-[#ebe7df]">
+          <p className="text-stone-600 text-xs sm:text-sm md:text-base mb-6 sm:mb-8 pb-4 border-b border-[#e2e8e4] leading-relaxed">
             Vui lòng điền đầy đủ thông tin bên dưới để SmaRes phục vụ bạn chu đáo nhất
           </p>
 
           {!isLoaded ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-pulse">
-              <div className="h-16 bg-[#f5f2eb] rounded-xl" />
-              <div className="h-16 bg-[#f5f2eb] rounded-xl" />
-              <div className="h-16 bg-[#f5f2eb] rounded-xl" />
-              <div className="h-16 bg-[#f5f2eb] rounded-xl" />
-              <div className="h-16 bg-[#f5f2eb] rounded-xl" />
-              <div className="h-16 bg-[#f5f2eb] rounded-xl" />
-              <div className="md:col-span-2 h-24 bg-[#f5f2eb] rounded-xl" />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 animate-pulse">
+              <div className="h-16 bg-stone-200/70 rounded-xl" />
+              <div className="h-16 bg-stone-200/70 rounded-xl" />
+              <div className="h-16 bg-stone-200/70 rounded-xl" />
+              <div className="h-16 bg-stone-200/70 rounded-xl" />
+              <div className="h-16 bg-stone-200/70 rounded-xl" />
+              <div className="h-16 bg-stone-200/70 rounded-xl" />
+              <div className="md:col-span-2 h-24 bg-stone-200/70 rounded-xl" />
               <div className="md:col-span-2 h-14 bg-[#dcfce7] rounded-xl" />
             </div>
           ) : (
@@ -417,50 +450,52 @@ export default function BookingPage() {
         </div>
 
         {/* Cột phải: Thông tin thêm (chiếm 1 phần) */}
-        <div className="space-y-6">
-          <div className="bg-[#0a1f14] rounded-2xl p-8 text-white shadow-md border border-[#14532d]/40 relative overflow-hidden">
+        <div className="space-y-5 sm:space-y-6">
+          <div className="bg-[#0e3f2d] rounded-2xl p-6 sm:p-8 text-white shadow-md border border-[#155e42]/40 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-[#fbbf24]/5 rounded-full blur-2xl" />
-            <h3 className="text-2xl font-serif font-bold text-[#fbbf24] mb-4">
+            <h3 className="text-xl sm:text-2xl font-serif font-bold text-[#fbbf24] mb-3 sm:mb-4">
               SmaRes Gastronomy
             </h3>
-            <p className="text-sm text-stone-300 mb-6 leading-relaxed font-light">
+            <p className="text-xs sm:text-sm text-stone-300 mb-5 sm:mb-6 leading-relaxed font-light">
               Hương vị truyền thống được chế tác thông minh và chuẩn mực cao cấp. Khám phá ẩm thực mới lạ trong không gian mang hơi thở Á Đông hiện đại.
             </p>
-            <ul className="space-y-4 text-sm text-stone-300">
+            <ul className="space-y-3.5 sm:space-y-4 text-xs sm:text-sm text-stone-300">
               <li className="flex items-start gap-3">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#14532d] text-[#fbbf24] shrink-0 border border-[#22c55e]/20">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#155e42] text-[#fbbf24] shrink-0 border border-[#22c55e]/20">
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
                     <circle cx="12" cy="10" r="3" />
                   </svg>
                 </span>
-                <span>Quận 1, Thành phố Hồ Chí Minh</span>
+                <span>TP. Đà Nẵng</span>
               </li>
               <li className="flex items-start gap-3">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#14532d] text-[#fbbf24] shrink-0 border border-[#22c55e]/20">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#155e42] text-[#fbbf24] shrink-0 border border-[#22c55e]/20">
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
                   </svg>
                 </span>
-                <span>Hotline: 1900 1234</span>
+                <span>Hotline: **** ****</span>
               </li>
               <li className="flex items-start gap-3">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#14532d] text-[#fbbf24] shrink-0 border border-[#22c55e]/20">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#155e42] text-[#fbbf24] shrink-0 border border-[#22c55e]/20">
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <circle cx="12" cy="12" r="10" />
                     <polyline points="12 6 12 12 16 14" />
                   </svg>
                 </span>
-                <span>Giờ mở cửa: 09:00 AM - 23:00 PM</span>
+                <span>
+                  T2–T6: 10:00 – 22:30 • T7–CN: 09:00 – 23:00
+                </span>
               </li>
             </ul>
           </div>
 
-          <div className="bg-white rounded-2xl p-7 border border-[#ebe7df] shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)]">
-            <h3 className="text-[#14532d] font-serif font-bold mb-4 text-xl">
+          <div className="bg-white rounded-2xl p-5 sm:p-7 border border-[#e2e8e4] shadow-[0_4px_20px_-2px_rgba(28,25,23,0.06)]">
+            <h3 className="text-[#155e42] font-serif font-bold mb-3 sm:mb-4 text-lg sm:text-xl">
               Quy trình 4 bước tiện lợi
             </h3>
-            <ol className="text-sm text-stone-700 space-y-3.5 list-decimal pl-5 leading-relaxed">
+            <ol className="text-xs sm:text-sm text-stone-700 space-y-3 sm:space-y-3.5 list-decimal pl-5 leading-relaxed">
               <li>
                 <strong className="text-stone-900 font-semibold">Đặt thông tin bàn:</strong> Điền thời gian và số lượng khách.
               </li>

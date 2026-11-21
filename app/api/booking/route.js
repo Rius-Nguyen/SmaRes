@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { checkBookingAccess } from '@/app/lib/bookingRoleGuard';
 
 const bookingsByTable = new Map();
 
@@ -20,6 +21,10 @@ export async function GET(request) {
 
 export async function POST(request) {
   const startTime = Date.now();
+  const roleCheck = checkBookingAccess(request);
+  if (roleCheck.errorResponse) {
+    return roleCheck.errorResponse;
+  }
 
   try {
     const body = await request.json();

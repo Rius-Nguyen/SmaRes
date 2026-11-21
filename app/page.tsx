@@ -8,6 +8,7 @@ import { INITIAL_MENU_ITEMS, MenuItemData } from '@/app/lib/menuInitialData';
 import { useCart } from '@/app/context/CartContext';
 import { useToast } from '@/components/ui/Toast';
 import { formatMoney } from '@/app/lib/format';
+import { useAuthSession } from '@/app/lib/useAuthSession';
 
 const FEATURED_DISH_IDS = [
   '6717a01a1e0011a100000004', // Phở Bò Wagyu A5 Thượng Hạng Dát Vàng - 380.000đ
@@ -61,6 +62,7 @@ export default function Home() {
   const router = useRouter();
   const { addToCart, hasActiveBooking, bookingInfo, isLoaded } = useCart();
   const { showToast } = useToast();
+  const { isAdmin } = useAuthSession();
   const [featuredDishes, setFeaturedDishes] = useState<MenuItemData[]>(getInitialFeaturedDishes);
 
   // Đồng bộ trạng thái còn món / hết món mới nhất từ MongoDB nếu có
@@ -104,6 +106,10 @@ export default function Home() {
     }
 
     if (dish.isPreOrderOnly && !hasActiveBooking) {
+      if (isAdmin) {
+        showToast('Tài khoản Quản trị viên (Admin) không sử dụng chức năng đặt bàn.', 'info');
+        return;
+      }
       showToast(
         'Món đặc biệt chỉ phục vụ khi đặt bàn trước. Vui lòng chọn bàn trước khi thêm vào thực đơn!',
         'info'
@@ -159,17 +165,19 @@ export default function Home() {
           </p>
 
           <div className="flex flex-col sm:flex-row justify-center items-center gap-4 w-full max-w-md mx-auto sm:max-w-none">
-            {/* Primary CTA: Heritage Jade with subtle amber touch */}
-            <Link
-              href="/booking"
-              className="group relative inline-flex items-center justify-center gap-2 bg-[#14532d] hover:bg-[#15803d] text-white px-8 py-3.5 rounded-full font-semibold transition-all duration-300 shadow-[0_8px_24px_-4px_rgba(20,83,45,0.45)] hover:shadow-[0_12px_28px_-4px_rgba(20,83,45,0.6)] hover:-translate-y-0.5 active:scale-[0.98] w-full sm:w-auto border border-[#22c55e]/30"
-            >
-              <span>Đặt bàn ngay</span>
-              <svg className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 12h14" />
-                <path d="m12 5 7 7-7 7" />
-              </svg>
-            </Link>
+            {/* Primary CTA: Heritage Jade with subtle amber touch (ẩn với tài khoản Admin) */}
+            {!isAdmin && (
+              <Link
+                href="/booking"
+                className="group relative inline-flex items-center justify-center gap-2 bg-[#14532d] hover:bg-[#15803d] text-white px-8 py-3.5 rounded-full font-semibold transition-all duration-300 shadow-[0_8px_24px_-4px_rgba(20,83,45,0.45)] hover:shadow-[0_12px_28px_-4px_rgba(20,83,45,0.6)] hover:-translate-y-0.5 active:scale-[0.98] w-full sm:w-auto border border-[#22c55e]/30"
+              >
+                <span>Đặt bàn ngay</span>
+                <svg className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 12h14" />
+                  <path d="m12 5 7 7-7 7" />
+                </svg>
+              </Link>
+            )}
 
             {/* Secondary CTA: Imperial Amber */}
             <Link
@@ -293,7 +301,9 @@ export default function Home() {
                         {isSoldOut
                           ? 'Tạm hết món'
                           : needsBookingFirst
-                            ? 'Đặt bàn trước để chọn món'
+                            ? isAdmin
+                              ? 'Món đặt trước (dành cho khách)'
+                              : 'Đặt bàn trước để chọn món'
                             : 'Thêm vào giỏ hàng'}
                       </span>
                       <svg className="w-4 h-4 transition-transform duration-200 group-hover/btn:translate-x-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

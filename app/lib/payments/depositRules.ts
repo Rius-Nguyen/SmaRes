@@ -1,6 +1,6 @@
 export const STANDARD_DEPOSIT_AMOUNT = 100_000;
 export const VIP_BASE_DEPOSIT_AMOUNT = 300_000;
-export const PRE_ORDER_DEPOSIT_RATE = 0.2;
+export const PRE_ORDER_DEPOSIT_RATE = 0.5;
 export const LARGE_PARTY_CAPACITY_THRESHOLD = 6;
 
 export const DepositTier = {
@@ -22,6 +22,8 @@ export interface CalculateDepositInput extends DepositClassificationInput {
 }
 
 export interface DepositCalculationResult {
+  baseTableDeposit: number;
+  preOrderDeposit: number;
   amount: number;
   depositTier: DepositTier;
   preOrderTotal: number;
@@ -47,7 +49,8 @@ export function isVipOrLargeTable(input: DepositClassificationInput): boolean {
 }
 
 /**
- * Tính mức tiền đặt cọc chuẩn theo BR-RES-07 (dùng được ở cả Client Preview & Server).
+ * Tính mức tiền đặt cọc chuẩn theo BR-RES-07 (dùng được ở cả Client Preview & Server):
+ * Tổng tiền cọc = Cọc bàn cơ bản (100.000đ Standard / 300.000đ VIP hoặc >= 6 chỗ) + 50% tổng tiền thực đơn đặt trước.
  */
 export function calculateDepositAmount(
   input: CalculateDepositInput
@@ -59,21 +62,18 @@ export function calculateDepositAmount(
       ? Math.round(input.preOrderTotal)
       : 0;
 
-  if (!isVipOrLargeTable(input)) {
-    return {
-      amount: STANDARD_DEPOSIT_AMOUNT,
-      depositTier: DepositTier.STANDARD,
-      preOrderTotal: safePreOrderTotal,
-    };
-  }
-
-  const percentageAmount =
+  const vipOrLarge = isVipOrLargeTable(input);
+  const depositTier = vipOrLarge ? DepositTier.VIP_OR_LARGE : DepositTier.STANDARD;
+  const baseTableDeposit = vipOrLarge ? VIP_BASE_DEPOSIT_AMOUNT : STANDARD_DEPOSIT_AMOUNT;
+  const preOrderDeposit =
     safePreOrderTotal > 0 ? Math.round(safePreOrderTotal * PRE_ORDER_DEPOSIT_RATE) : 0;
-  const amount = Math.max(VIP_BASE_DEPOSIT_AMOUNT, percentageAmount);
+  const amount = baseTableDeposit + preOrderDeposit;
 
   return {
+    baseTableDeposit,
+    preOrderDeposit,
     amount,
-    depositTier: DepositTier.VIP_OR_LARGE,
+    depositTier,
     preOrderTotal: safePreOrderTotal,
   };
 }

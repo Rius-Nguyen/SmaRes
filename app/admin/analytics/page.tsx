@@ -414,6 +414,12 @@ export default function AdminAnalyticsPage() {
               <span>Quản lý bàn</span>
             </Link>
             <Link
+              href="/staff/qr"
+              className="px-3 py-2 rounded-xl bg-white hover:bg-[#F5F2EB] text-[#14532D] border border-[#D6D0C4] text-xs font-bold transition-colors"
+            >
+              Mã QR bàn
+            </Link>
+            <Link
               href="/kds"
               className="px-3 py-2 rounded-xl bg-[#D97706] hover:bg-[#B45309] text-white text-xs font-semibold transition-colors shadow-xs"
             >

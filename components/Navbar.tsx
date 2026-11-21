@@ -4,106 +4,27 @@ import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useCart } from '@/app/context/CartContext';
+import { useAuthSession } from '@/app/lib/useAuthSession';
 
 const NAV_LINKS = [
   { href: '/', label: 'Trang chủ' },
   { href: '/menu', label: 'Thực đơn' },
-  { href: '/table-menu', label: 'Menu tại bàn' },
   { href: '/about', label: 'Về chúng tôi' },
-  { href: '/contact', label: 'Liên hệ' },
 ] as const;
 
 export default function Navbar() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userName, setUserName] = useState('');
-  const [userRole, setUserRole] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
   const { totalItems, hasActiveBooking } = useCart();
-
-  // Tự động kiểm tra trạng thái đăng nhập qua HttpOnly cookie (/api/user/profile)
-  useEffect(() => {
-    let isCancelled = false;
-
-    const applyLocalCache = () => {
-      try {
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-          const userData = JSON.parse(storedUser) as { name?: string; role?: string };
-          if (!isCancelled) {
-            setUserName(userData.name || 'Người dùng');
-            setUserRole(userData.role || '');
-            setIsLoggedIn(true);
-          }
-          return;
-        }
-      } catch {
-        // Ignore malformed local cache; server check below will reconcile
-      }
-      if (!isCancelled) {
-        setIsLoggedIn(false);
-        setUserName('');
-        setUserRole('');
-      }
-    };
-
-    const checkSession = async () => {
-      applyLocalCache();
-
-      try {
-        const response = await fetch('/api/user/profile', {
-          method: 'GET',
-          cache: 'no-store',
-        });
-
-        if (isCancelled) return;
-
-        if (response.ok) {
-          const data = (await response.json()) as {
-            user?: { id?: string; name?: string; email?: string; role?: string };
-          };
-          if (data.user) {
-            const safeUser = {
-              id: data.user.id ?? '',
-              name: data.user.name ?? '',
-              email: data.user.email ?? '',
-              role: data.user.role ?? '',
-            };
-            localStorage.removeItem('token');
-            localStorage.setItem('user', JSON.stringify(safeUser));
-            setUserName(safeUser.name || 'Người dùng');
-            setUserRole(safeUser.role || '');
-            setIsLoggedIn(true);
-          }
-        } else if (response.status === 401) {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          setIsLoggedIn(false);
-          setUserName('');
-          setUserRole('');
-        }
-      } catch {
-        // Keep current cached state on transient network errors
-      }
-    };
-
-    const handleSessionSync = () => {
-      void checkSession();
-    };
-
-    void checkSession();
-
-    // Lắng nghe sự kiện để đồng bộ tức thì giữa các component
-    window.addEventListener('storage', handleSessionSync);
-    window.addEventListener('auth-change', handleSessionSync);
-
-    return () => {
-      isCancelled = true;
-      window.removeEventListener('storage', handleSessionSync);
-      window.removeEventListener('auth-change', handleSessionSync);
-    };
-  }, []);
+  const {
+    isLoggedIn,
+    userName,
+    userRole,
+    isAdmin,
+    isStaffOrAdmin,
+    clearClientSession,
+  } = useAuthSession();
 
   // Đóng menu mobile khi nhấn Escape
   useEffect(() => {
@@ -126,25 +47,15 @@ export default function Navbar() {
       console.error('Lỗi khi gọi API logout:', err);
     }
 
-    // Xóa dữ liệu trong localStorage
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setIsLoggedIn(false);
-    setUserName('');
-    setUserRole('');
-
-    // Phát sự kiện thông báo trạng thái auth đã thay đổi
-    window.dispatchEvent(new Event('auth-change'));
+    clearClientSession();
     router.push('/login');
   };
 
   const closeMobileMenu = () => setMobileMenuOpen(false);
-  const cartHref = hasActiveBooking ? '/booking/menu' : '/cart';
-  const isStaffOrAdmin = userRole === 'admin' || userRole === 'staff';
-  const isAdmin = userRole === 'admin';
+  const cartHref = hasActiveBooking && !isAdmin ? '/booking/menu' : '/cart';
 
   return (
-    <header className="sticky top-0 z-50 bg-[#faf8f5]/92 backdrop-blur-md border-b border-[#ebe7df] shadow-[0_2px_12px_-2px_rgba(28,25,23,0.05)] transition-all">
+    <header className="print:hidden sticky top-0 z-50 bg-[#faf8f5]/92 backdrop-blur-md border-b border-[#ebe7df] shadow-[0_2px_12px_-2px_rgba(28,25,23,0.05)] transition-all">
       <nav className="max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-6 lg:px-10 py-3.5 gap-4">
         {/* Cụm Logo bên trái */}
         <Link
@@ -181,6 +92,18 @@ export default function Navbar() {
               </Link>
             );
           })}
+          {isStaffOrAdmin && (
+            <Link
+              href="/staff/qr"
+              className={`nav-link-subtle py-1 whitespace-nowrap ${
+                pathname === '/staff/qr' || pathname === '/qr'
+                  ? 'text-[#14532d]'
+                  : 'hover:text-[#14532d]'
+              }`}
+            >
+              Mã QR bàn
+            </Link>
+          )}
         </div>
 
         {/* Cụm nút bấm bên phải (Desktop >= lg) */}
@@ -305,13 +228,15 @@ export default function Navbar() {
             </Link>
           )}
 
-          {/* Nút Đặt bàn chính (Heritage Jade + Warm Glow) */}
-          <Link
-            href="/booking"
-            className="interactive-btn bg-[#14532d] hover:bg-[#0f3d21] text-white text-xs sm:text-sm font-semibold px-5 py-2.5 rounded-full shadow-[0_4px_16px_rgba(20,83,45,0.22)] whitespace-nowrap"
-          >
-            Đặt bàn ngay
-          </Link>
+          {/* Nút Đặt bàn chính (Heritage Jade + Warm Glow) — ẩn với tài khoản Admin */}
+          {!isAdmin && (
+            <Link
+              href="/booking"
+              className="interactive-btn bg-[#14532d] hover:bg-[#0f3d21] text-white text-xs sm:text-sm font-semibold px-5 py-2.5 rounded-full shadow-[0_4px_16px_rgba(20,83,45,0.22)] whitespace-nowrap"
+            >
+              Đặt bàn ngay
+            </Link>
+          )}
         </div>
 
         {/* Cụm nút bấm trên Mobile / Tablet (< lg) */}
@@ -333,13 +258,15 @@ export default function Navbar() {
             </Link>
           )}
 
-          <Link
-            href="/booking"
-            onClick={closeMobileMenu}
-            className="bg-[#14532d] hover:bg-[#0f3d21] text-white text-xs font-semibold px-3.5 py-2 rounded-full shadow-xs whitespace-nowrap"
-          >
-            Đặt bàn
-          </Link>
+          {!isAdmin && (
+            <Link
+              href="/booking"
+              onClick={closeMobileMenu}
+              className="bg-[#14532d] hover:bg-[#0f3d21] text-white text-xs font-semibold px-3.5 py-2 rounded-full shadow-xs whitespace-nowrap"
+            >
+              Đặt bàn
+            </Link>
+          )}
 
           <button
             type="button"
@@ -469,6 +396,19 @@ export default function Navbar() {
                     </svg>
                     <span>Quản lý bàn</span>
                   </Link>
+                  <Link
+                    href="/staff/qr"
+                    onClick={closeMobileMenu}
+                    className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold bg-white text-[#14532d] border border-[#d6d0c4] hover:bg-[#f5f2eb]"
+                  >
+                    <svg className="w-3.5 h-3.5 text-[#14532d]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <rect x="3" y="3" width="7" height="7" strokeWidth={2} />
+                      <rect x="14" y="3" width="7" height="7" strokeWidth={2} />
+                      <rect x="3" y="14" width="7" height="7" strokeWidth={2} />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 14h3v3h-3zM17 17h4v4" />
+                    </svg>
+                    <span>Mã QR bàn</span>
+                  </Link>
                 </div>
               </div>
             )}
@@ -502,13 +442,15 @@ export default function Navbar() {
                 </Link>
               )}
 
-              <Link
-                href="/booking"
-                onClick={closeMobileMenu}
-                className="text-center bg-[#14532d] hover:bg-[#0f3d21] text-white text-sm font-semibold px-5 py-3 rounded-xl shadow-xs"
-              >
-                Đặt bàn ngay
-              </Link>
+              {!isAdmin && (
+                <Link
+                  href="/booking"
+                  onClick={closeMobileMenu}
+                  className="text-center bg-[#14532d] hover:bg-[#0f3d21] text-white text-sm font-semibold px-5 py-3 rounded-xl shadow-xs"
+                >
+                  Đặt bàn ngay
+                </Link>
+              )}
             </div>
           </div>
         </div>

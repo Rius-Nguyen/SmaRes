@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { formatMoney } from '@/app/lib/format';
 import { MenuItemData } from '@/app/lib/menuInitialData';
+import { useAuthSession } from '@/app/lib/useAuthSession';
 
 export interface SpecialDishModalProps {
   dish: MenuItemData | null;
@@ -18,6 +19,7 @@ export default function SpecialDishModal({
   onClose,
   bookingHref = '/booking',
 }: SpecialDishModalProps) {
+  const { isAdmin } = useAuthSession();
   if (!isOpen || !dish) return null;
 
   return (
@@ -89,23 +91,29 @@ export default function SpecialDishModal({
         </p>
 
         <div className="space-y-2.5">
-          <Link
-            href={bookingHref}
-            onClick={onClose}
-            className="inline-flex items-center justify-center gap-2 w-full bg-[#14532d] hover:bg-[#15803d] text-white font-bold py-3.5 px-4 rounded-xl text-sm shadow-[0_8px_20px_-4px_rgba(20,83,45,0.4)] transition-all text-center"
-          >
-            <span>Đặt bàn ngay để mở khóa món này</span>
-            <svg
-              className="w-4 h-4"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
+          {!isAdmin ? (
+            <Link
+              href={bookingHref}
+              onClick={onClose}
+              className="inline-flex items-center justify-center gap-2 w-full bg-[#14532d] hover:bg-[#15803d] text-white font-bold py-3.5 px-4 rounded-xl text-sm shadow-[0_8px_20px_-4px_rgba(20,83,45,0.4)] transition-all text-center"
             >
-              <path d="M5 12h14" />
-              <path d="m12 5 7 7-7 7" />
-            </svg>
-          </Link>
+              <span>Đặt bàn ngay để mở khóa món này</span>
+              <svg
+                className="w-4 h-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+              >
+                <path d="M5 12h14" />
+                <path d="m12 5 7 7-7 7" />
+              </svg>
+            </Link>
+          ) : (
+            <p className="text-xs font-medium text-amber-800 bg-[#fffbeb] border border-[#fde68a] rounded-xl px-3.5 py-2.5">
+              Tài khoản Quản trị viên (Admin) không sử dụng chức năng đặt bàn.
+            </p>
+          )}
 
           <button
             type="button"

@@ -1,10 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import connectDB from '@/app/lib/db';
-import { generateBookingCode, parseVietnamDateTime } from '@/app/lib/reservationHelpers';
+import {
+  computeDiningInterval,
+  computeSlotBlockInterval,
+  doDateIntervalsOverlap,
+  doTimeSlotsOverlap,
+  extendEndTimeWithCleaningBuffer,
+  generateBookingCode,
+  getOperatingHoursForDate,
+  isSlotBeforeMinAdvance,
+  isWithinOperatingHoursForDate,
+  parseVietnamDateTime,
+} from '@/app/lib/reservationHelpers';
 import Table from '@/app/models/Table';
 import Reservation, { ReservationStatus } from '@/app/models/Reservation';
-import { getAuthUser, requireAuth } from '@/app/lib/auth';
+import { requireAuth } from '@/app/lib/auth';
+import { checkBookingAccess } from '@/app/lib/bookingRoleGuard';
 
 export const dynamic = 'force-dynamic';
 
@@ -121,9 +133,13 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await connectDB();
+    const roleCheck = checkBookingAccess(request);
+    if (roleCheck.errorResponse) {
+      return roleCheck.errorResponse;
+    }
+    const user = roleCheck.user;
 
-    const user = getAuthUser(request);
+    await connectDB();
 
     let rawBody: unknown;
     try {
@@ -195,6 +211,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!isWithinOperatingHoursForDate(date, time)) {
+      const hours = getOperatingHoursForDate(date);
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'OUTSIDE_OPERATING_HOURS',
+          message: `Giờ đặt bàn phải nằm trong khung giờ phục vụ ${hours.label}.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (isSlotBeforeMinAdvance(date, time)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'BOOKING_LEAD_TIME_TOO_SHORT',
+          message: 'Vui lòng đặt bàn trước giờ hẹn tối thiểu 30 phút (BR-RES-13).',
+        },
+        { status: 400 }
+      );
+    }
+
     if (tableId && !mongoose.Types.ObjectId.isValid(tableId)) {
       return NextResponse.json(
         { success: false, message: 'Mã bàn (tableId) không hợp lệ.' },
@@ -223,18 +262,46 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const existingReservation = await Reservation.findOne({
+    const diningInterval = computeDiningInterval(date, time);
+    const blockInterval = computeSlotBlockInterval(date, time);
+    if (!diningInterval || !blockInterval) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Ngày hoặc khung giờ đặt bàn không hợp lệ (YYYY-MM-DD và HH:mm).',
+        },
+        { status: 400 }
+      );
+    }
+
+    const activeSameDayReservations = await Reservation.find({
       tableId: table._id,
       date,
-      time,
-      status: { $ne: ReservationStatus.CANCELLED },
+      status: { $in: [ReservationStatus.CONFIRMED, ReservationStatus.CHECKED_IN] },
     })
-      .select('_id')
+      .select('_id time startTime endTime')
       .lean();
 
-    if (existingReservation) {
+    const overlappingReservation = activeSameDayReservations.find((res) => {
+      if (res.startTime && res.endTime) {
+        const resBlockedEnd = extendEndTimeWithCleaningBuffer(res.endTime) ?? res.endTime;
+        return doDateIntervalsOverlap(
+          blockInterval.startTime,
+          blockInterval.endTime,
+          res.startTime,
+          resBlockedEnd
+        );
+      }
+      return !res.time || doTimeSlotsOverlap(res.time, time);
+    });
+
+    if (overlappingReservation) {
       return NextResponse.json(
-        { success: false, message: 'Bàn này đã có người đặt vào khung giờ đã chọn!' },
+        {
+          success: false,
+          message:
+            'Bàn này đã có người đặt trong khung giờ trùng lặp (150 phút dùng bữa + 30 phút dọn bàn = 180 phút / 3 giờ). Vui lòng chọn bàn khác hoặc khung giờ khác!',
+        },
         { status: 409 }
       );
     }
@@ -251,11 +318,22 @@ export async function POST(request: NextRequest) {
           bookingCode,
           date,
           time,
+          startTime: diningInterval.startTime,
+          endTime: diningInterval.endTime,
           guests: guestsNum,
           phone,
           note,
           status: ReservationStatus.CONFIRMED,
         });
+
+        const resolvedStartIso =
+          newReservation.startTime instanceof Date
+            ? newReservation.startTime.toISOString()
+            : diningInterval.startTime.toISOString();
+        const resolvedEndIso =
+          newReservation.endTime instanceof Date
+            ? newReservation.endTime.toISOString()
+            : diningInterval.endTime.toISOString();
 
         return NextResponse.json(
           {
@@ -269,6 +347,8 @@ export async function POST(request: NextRequest) {
               customerName: newReservation.customerName,
               date: newReservation.date,
               time: newReservation.time,
+              startTime: resolvedStartIso,
+              endTime: resolvedEndIso,
               guests: newReservation.guests,
               phone: newReservation.phone,
               note: newReservation.note,

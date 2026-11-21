@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
+import { useAuthSession } from '@/app/lib/useAuthSession';
 import {
   KdsOrderStatus,
   OrderItemCustomization,
@@ -90,6 +91,7 @@ function formatDateTimeVi(iso?: string): string {
 }
 
 export default function CustomerOrdersPage() {
+  const { isAdmin } = useAuthSession();
   const [orders, setOrders] = useState<CustomerOrder[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
@@ -384,12 +386,14 @@ export default function CustomerOrdersPage() {
               >
                 Khám phá thực đơn
               </Link>
-              <Link
-                href="/booking"
-                className="px-5 py-2.5 rounded-xl bg-[#faf8f5] hover:bg-[#f5f2eb] text-[#1c1917] border border-[#d6d0c4] text-xs sm:text-sm font-semibold transition-colors"
-              >
-                Đặt bàn ngay
-              </Link>
+              {!isAdmin && (
+                <Link
+                  href="/booking"
+                  className="px-5 py-2.5 rounded-xl bg-[#faf8f5] hover:bg-[#f5f2eb] text-[#1c1917] border border-[#d6d0c4] text-xs sm:text-sm font-semibold transition-colors"
+                >
+                  Đặt bàn ngay
+                </Link>
+              )}
             </div>
           </div>
         ) : (

@@ -990,6 +990,12 @@ export default function AdminMenuPage() {
               Sơ đồ bàn
             </Link>
             <Link
+              href="/staff/qr"
+              className="px-3 py-2 rounded-xl bg-white hover:bg-[#f5f2eb] text-[#14532d] text-xs font-semibold transition-colors border border-[#d6d0c4]"
+            >
+              Mã QR bàn
+            </Link>
+            <Link
               href="/kds"
               className="px-3 py-2 rounded-xl bg-[#d97706] hover:bg-[#b45309] text-white text-xs font-semibold transition-all flex items-center gap-1.5 shadow-xs"
             >

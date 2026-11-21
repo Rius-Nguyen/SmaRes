@@ -344,7 +344,7 @@ export default function AuthCard({ initialMode = 'login' }: AuthCardProps) {
                       value={loginData.email}
                       onChange={handleLoginChange}
                       required
-                      placeholder="admin@smares.com hoặc admin" 
+                      placeholder="yourname@gmail.com hoặc tên đăng nhập" 
                       className="w-full pl-11 pr-4 py-3 bg-stone-50/60 border border-stone-200 rounded-xl text-stone-900 text-sm sm:text-base placeholder:text-stone-400 focus:outline-none focus:border-emerald-700 focus:ring-4 focus:ring-emerald-700/10 focus:bg-white hover:border-stone-300 transition-all duration-200" 
                     />
                   </div>
@@ -360,7 +360,7 @@ export default function AuthCard({ initialMode = 'login' }: AuthCardProps) {
                       type="button"
                       onClick={() =>
                         showToast(
-                          'Vui lòng liên hệ hotline 1900 1234 hoặc trang Liên hệ để được hỗ trợ khôi phục mật khẩu.',
+                          'Vui lòng liên hệ hotline **** **** hoặc mục Liên hệ tại trang Về chúng tôi để được hỗ trợ khôi phục mật khẩu.',
                           'info'
                         )
                       }
@@ -602,7 +602,7 @@ export default function AuthCard({ initialMode = 'login' }: AuthCardProps) {
                       Điều khoản sử dụng
                     </Link>{' '}
                     và{' '}
-                    <Link href="/contact#privacy" className="text-emerald-800 font-semibold hover:text-amber-700 hover:underline transition-colors">
+                    <Link href="/about#privacy" className="text-emerald-800 font-semibold hover:text-amber-700 hover:underline transition-colors">
                       Chính sách bảo mật
                     </Link>{' '}
                     của SmaRes.
@@ -645,7 +645,7 @@ export default function AuthCard({ initialMode = 'login' }: AuthCardProps) {
             <span>←</span> Quay lại Trang chủ SmaRes
           </Link>
           <Link
-            href="/contact"
+            href="/about#contact"
             className="font-medium text-emerald-800 hover:text-amber-700 hover:underline transition-colors"
           >
             Hỗ trợ tài khoản →

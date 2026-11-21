@@ -2,6 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useAuthSession } from '@/app/lib/useAuthSession';
+import { formatCountdownHhMmSs, formatVietnamTimeHm } from '@/app/lib/format';
+import {
+  computeDiningInterval,
+  getClosingTimestampForDate,
+} from '@/app/lib/reservationHelpers';
 
 type ReservationStatus = 'CONFIRMED' | 'CHECKED_IN' | 'COMPLETED' | 'CANCELLED';
 type StatusFilter = 'ALL' | ReservationStatus;
@@ -14,6 +20,8 @@ interface ReservationRecord {
   phone: string;
   date: string;
   time: string;
+  startTime?: string | null;
+  endTime?: string | null;
   guests: number;
   note?: string;
   status: ReservationStatus;
@@ -68,6 +76,7 @@ function formatDateVi(dateStr: string): string {
 }
 
 export default function HistoryPage() {
+  const { isAdmin } = useAuthSession();
   const [reservations, setReservations] = useState<ReservationRecord[]>([]);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [loading, setLoading] = useState<boolean>(true);
@@ -79,6 +88,14 @@ export default function HistoryPage() {
   const [isCancelling, setIsCancelling] = useState<boolean>(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -268,16 +285,18 @@ export default function HistoryPage() {
                 </select>
               </div>
 
-              <Link
-                href="/booking"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#14532d] hover:bg-[#15803d] text-white text-xs sm:text-sm font-semibold transition-colors"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 5v14" />
-                  <path d="M5 12h14" />
-                </svg>
-                <span>Đặt bàn mới</span>
-              </Link>
+              {!isAdmin && (
+                <Link
+                  href="/booking"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#14532d] hover:bg-[#15803d] text-white text-xs sm:text-sm font-semibold transition-colors"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 5v14" />
+                    <path d="M5 12h14" />
+                  </svg>
+                  <span>Đặt bàn mới</span>
+                </Link>
+              )}
             </div>
           </div>
 
@@ -375,12 +394,14 @@ export default function HistoryPage() {
                   : 'Thử chọn trạng thái khác để xem các đơn đặt bàn của bạn.'}
               </p>
               {reservations.length === 0 ? (
-                <Link
-                  href="/booking"
-                  className="inline-flex items-center gap-2 bg-[#14532d] hover:bg-[#15803d] text-white px-6 py-3 rounded-xl text-sm font-semibold transition-colors shadow-[0_8px_24px_-4px_rgba(20,83,45,0.35)]"
-                >
-                  <span>Đặt bàn ngay</span>
-                </Link>
+                !isAdmin ? (
+                  <Link
+                    href="/booking"
+                    className="inline-flex items-center gap-2 bg-[#14532d] hover:bg-[#15803d] text-white px-6 py-3 rounded-xl text-sm font-semibold transition-colors shadow-[0_8px_24px_-4px_rgba(20,83,45,0.35)]"
+                  >
+                    <span>Đặt bàn ngay</span>
+                  </Link>
+                ) : null
               ) : (
                 <button
                   type="button"
@@ -412,6 +433,38 @@ export default function HistoryPage() {
                       badgeClass: 'text-[#57534e] bg-stone-100 border-[#ebe7df]',
                     };
                     const isCancelled = reservation.status === 'CANCELLED';
+                    const fallbackInterval = computeDiningInterval(
+                      reservation.date,
+                      reservation.time
+                    );
+                    const parsedStartMs = reservation.startTime
+                      ? Date.parse(reservation.startTime)
+                      : fallbackInterval
+                        ? fallbackInterval.startTime.getTime()
+                        : Number.NaN;
+                    const hasValidStart = Number.isFinite(parsedStartMs);
+                    const closingMs = getClosingTimestampForDate(reservation.date);
+                    const rawEndMs = reservation.endTime
+                      ? Date.parse(reservation.endTime)
+                      : fallbackInterval
+                        ? fallbackInterval.endTime.getTime()
+                        : Number.NaN;
+                    const parsedEndMs = Number.isFinite(rawEndMs)
+                      ? Number.isFinite(closingMs)
+                        ? Math.min(rawEndMs, closingMs)
+                        : rawEndMs
+                      : Number.NaN;
+                    const durationMinutes =
+                      hasValidStart && Number.isFinite(parsedEndMs)
+                        ? Math.max(0, Math.round((parsedEndMs - parsedStartMs) / 60000))
+                        : 150;
+                    const closingHm = Number.isFinite(closingMs)
+                      ? formatVietnamTimeHm(closingMs)
+                      : '00:00';
+                    const endHm = Number.isFinite(parsedEndMs)
+                      ? formatVietnamTimeHm(parsedEndMs)
+                      : '';
+                    const graceEndMs = hasValidStart ? parsedStartMs + 15 * 60 * 1000 : Number.NaN;
 
                     return (
                       <tr
@@ -436,7 +489,33 @@ export default function HistoryPage() {
                           {formatDateVi(reservation.date)}
                         </td>
                         <td className="py-4 text-[#1c1917] font-medium">
-                          {reservation.time}
+                          <div>
+                            <span>{reservation.time}</span>
+                            {endHm && (
+                              <span className="text-xs text-[#78716c]"> – {endHm}</span>
+                            )}
+                          </div>
+                          {endHm && (
+                            <p className="text-[11px] text-[#78716c]">
+                              Tối đa {durationMinutes} phút
+                              {durationMinutes < 150 ? ` (đóng cửa ${closingHm})` : ''}
+                            </p>
+                          )}
+                          {reservation.status === 'CONFIRMED' && hasValidStart && (
+                            nowMs < parsedStartMs ? (
+                              <span className="mt-1 inline-flex items-center gap-1 font-mono text-[11px] font-semibold text-[#14532d] bg-[#f0fdf4] border border-[#bbf7d0] px-2 py-0.5 rounded-md">
+                                Còn {formatCountdownHhMmSs(Math.ceil((parsedStartMs - nowMs) / 1000))}
+                              </span>
+                            ) : nowMs <= graceEndMs ? (
+                              <span className="mt-1 inline-flex items-center gap-1 font-mono text-[11px] font-semibold text-[#b45309] bg-[#fffbeb] border border-[#fde68a] px-2 py-0.5 rounded-md">
+                                Giữ chỗ 15p: {formatCountdownHhMmSs(Math.ceil((graceEndMs - nowMs) / 1000))}
+                              </span>
+                            ) : (
+                              <span className="mt-1 inline-flex items-center text-[11px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md">
+                                Quá hạn giữ chỗ 15p
+                              </span>
+                            )
+                          )}
                         </td>
                         <td className="py-4 font-semibold text-[#1c1917]">
                           {reservation.tableNumber ? `Bàn ${reservation.tableNumber}` : '—'}

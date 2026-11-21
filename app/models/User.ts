@@ -16,6 +16,8 @@ export interface IUser extends Document {
   password: string;
   phone: string;
   role: UserRole;
+  failedLoginAttempts: number;
+  lockUntil: Date | null;
   createdAt: Date;
   updatedAt: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;
@@ -53,6 +55,15 @@ const UserSchema = new Schema<IUser>(
       type: String,
       enum: Object.values(UserRole),
       default: UserRole.CUSTOMER,
+    },
+    failedLoginAttempts: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    lockUntil: {
+      type: Date,
+      default: null,
     },
   },
   {

@@ -7,6 +7,14 @@ import Transaction, {
   TransactionStatus,
 } from '@/app/models/Transaction';
 import Reservation, { PaymentStatus } from '@/app/models/Reservation';
+import Table from '@/app/models/Table';
+import Order, { OrderStatus } from '@/app/models/Order';
+import {
+  STANDARD_DEPOSIT_AMOUNT,
+  calculateDepositAmount,
+  computeVerifiedPreOrderTotal,
+  parsePreOrderItems,
+} from '@/app/lib/payments/depositCalculator';
 
 export const dynamic = 'force-dynamic';
 
@@ -150,8 +158,17 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
 
-    const body = await request.json().catch(() => ({}));
-    const { reservationId, amount, provider = 'BANK_QR', userId } = body;
+    const rawBody = await request.json().catch(() => ({}));
+    const body =
+      typeof rawBody === 'object' && rawBody !== null
+        ? (rawBody as Record<string, unknown>)
+        : {};
+    const reservationId =
+      typeof body.reservationId === 'string' ? body.reservationId.trim() : '';
+    const amount = body.amount;
+    const provider = typeof body.provider === 'string' ? body.provider : 'BANK_QR';
+    const userId = typeof body.userId === 'string' ? body.userId.trim() : '';
+    const preOrderItems = parsePreOrderItems(body.preOrderItems);
 
     if (!reservationId) {
       return NextResponse.json(
@@ -164,7 +181,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!amount || typeof amount !== 'number' || amount <= 0) {
+    if (
+      amount !== undefined &&
+      (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0)
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -197,6 +217,47 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 1b. Tính lại tổng tiền cọc phía Server theo BR-RES-07 (không tin amount do client gửi)
+    const table = reservation.tableId
+      ? await Table.findById(reservation.tableId)
+          .select('_id tableNumber capacity zoneName')
+          .lean()
+      : null;
+
+    let preOrderTotal = 0;
+    if (preOrderItems.length > 0) {
+      preOrderTotal = await computeVerifiedPreOrderTotal(preOrderItems);
+    } else if (reservation.phone) {
+      const lookbackWindow = new Date(Date.now() - 30 * 60 * 1000);
+      const pendingOrder = await Order.findOne({
+        tableNumber: (table?.tableNumber || reservation.tableNumber || '').toUpperCase(),
+        phone: reservation.phone,
+        status: OrderStatus.PENDING,
+        createdAt: { $gte: lookbackWindow },
+      })
+        .select('totalAmount')
+        .sort({ createdAt: -1 })
+        .lean();
+
+      if (
+        pendingOrder &&
+        typeof pendingOrder.totalAmount === 'number' &&
+        Number.isFinite(pendingOrder.totalAmount) &&
+        pendingOrder.totalAmount > 0
+      ) {
+        preOrderTotal = Math.round(pendingOrder.totalAmount);
+      }
+    }
+
+    const depositCalc = calculateDepositAmount({
+      tableNumber: table?.tableNumber || reservation.tableNumber,
+      zoneName: table?.zoneName,
+      capacity: table?.capacity,
+      guests: reservation.guests,
+      preOrderTotal,
+    });
+    const verifiedAmount = Math.max(STANDARD_DEPOSIT_AMOUNT, depositCalc.amount);
+
     // 2. Tạo mã transactionRef duy nhất
     const randomHex = crypto.randomBytes(3).toString('hex').toUpperCase();
     const transactionRef = `TXN_DEP_${Date.now()}_${randomHex}`;
@@ -214,7 +275,7 @@ export async function POST(request: NextRequest) {
     const newTransaction = await Transaction.create({
       reservationId: reservation._id,
       userId: userId && Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : reservation.userId || null,
-      amount: amount,
+      amount: verifiedAmount,
       provider: validProvider,
       status: TransactionStatus.PENDING,
       transactionRef: transactionRef,
@@ -222,7 +283,7 @@ export async function POST(request: NextRequest) {
     });
 
     // 5. Cập nhật Reservation: depositAmount, paymentStatus = 'PENDING', holdExpiresAt = expiresAt
-    reservation.depositAmount = amount;
+    reservation.depositAmount = verifiedAmount;
     reservation.paymentStatus = PaymentStatus.PENDING;
     reservation.holdExpiresAt = expiresAt;
     await reservation.save();
@@ -234,7 +295,11 @@ export async function POST(request: NextRequest) {
         data: {
           id: newTransaction._id,
           reservationId: newTransaction.reservationId,
-          amount: newTransaction.amount,
+          amount: verifiedAmount,
+          baseTableDeposit: depositCalc.baseTableDeposit,
+          preOrderDeposit: depositCalc.preOrderDeposit,
+          preOrderTotal: depositCalc.preOrderTotal,
+          depositTier: depositCalc.depositTier,
           provider: newTransaction.provider,
           status: newTransaction.status,
           transactionRef: newTransaction.transactionRef,

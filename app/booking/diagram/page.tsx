@@ -5,7 +5,19 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import BookingStepper from '@/components/BookingStepper';
+import LockCountdownBanner from '@/components/booking/LockCountdownBanner';
+import {
+  acquireClientTableLock,
+  computeRemainingLockSeconds,
+  formatCountdownHhMmSs,
+  getOrCreateLockSessionId,
+  readActiveTableLock,
+  releaseClientTableLock,
+  writeActiveTableLock,
+  type ClientTableLockState,
+} from '@/app/lib/bookingLockClient';
 import { useCart } from '@/app/context/CartContext';
+import { useToast } from '@/components/ui/Toast';
 
 type ZoneCategory = 'VIP' | 'Trung tâm' | 'Cửa sổ';
 
@@ -15,6 +27,10 @@ interface AvailabilityTable {
   capacity: number;
   zoneName: string;
   status: string;
+  isBooked?: boolean;
+  isLocked?: boolean;
+  isLockedByCurrentSession?: boolean;
+  lockedUntil?: string | null;
   isAvailable: boolean;
 }
 
@@ -110,25 +126,50 @@ function resolveZoneMeta(table: AvailabilityTable): ZoneMeta {
 export default function BookingDiagramPage() {
   const router = useRouter();
   const { bookingInfo, setBookingInfo, isLoaded } = useCart();
+  const { showToast } = useToast();
 
   const queryDate = bookingInfo?.date || getVietnamDateString(1);
   const queryTime = bookingInfo?.time || '19:00';
   const queryGuests = normalizeGuests(bookingInfo?.guests, 2);
   const hasContactInfo = Boolean(bookingInfo?.name?.trim() && bookingInfo?.phone?.trim());
 
+  const [lockSessionId] = useState<string>(() => getOrCreateLockSessionId());
+  const [activeLock, setActiveLock] = useState<ClientTableLockState | null>(() =>
+    readActiveTableLock()
+  );
   const [tables, setTables] = useState<AvailabilityTable[]>([]);
   const [selectedTableId, setSelectedTableId] = useState<string>('');
   const [loadedQueryKey, setLoadedQueryKey] = useState<string>('');
   const [fetchError, setFetchError] = useState<string>('');
   const [actionWarning, setActionWarning] = useState<string>('');
+  const [lockingTableId, setLockingTableId] = useState<string>('');
+  const [isContinuing, setIsContinuing] = useState<boolean>(false);
+  const [isReleasingLock, setIsReleasingLock] = useState<boolean>(false);
   const [previewImageModal, setPreviewImageModal] = useState<boolean>(false);
   const [reloadNonce, setReloadNonce] = useState<number>(0);
+  const [nowTickMs, setNowTickMs] = useState<number>(() => Date.now());
 
   const currentQueryKey = `${queryDate}|${queryTime}|${queryGuests}|${reloadNonce}`;
   const isFetching = !isLoaded || loadedQueryKey !== currentQueryKey;
 
+  const hasOtherLockedTables = tables.some((t) => Boolean(t.isLocked && t.lockedUntil));
+
+  // Cập nhật đếm ngược trực tiếp trên các bàn đang bị khách khác giữ chỗ
+  useEffect(() => {
+    if (!hasOtherLockedTables) return;
+    const timer = window.setInterval(() => {
+      setNowTickMs(Date.now());
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [hasOtherLockedTables]);
+
   const pickDefaultTableId = useCallback(
     (list: AvailabilityTable[]): string => {
+      const ownLocked = list.find(
+        (t) => t.isLockedByCurrentSession && t.isAvailable && t.capacity >= queryGuests
+      );
+      if (ownLocked) return ownLocked.id;
+
       const savedTableNumber = bookingInfo?.tableNumber?.toUpperCase();
       if (savedTableNumber) {
         const matched = list.find(
@@ -150,7 +191,7 @@ export default function BookingDiagramPage() {
     if (!isLoaded) return;
     let isCancelled = false;
 
-    const url = `/api/tables/availability?date=${encodeURIComponent(queryDate)}&time=${encodeURIComponent(queryTime)}&guests=${encodeURIComponent(String(queryGuests))}`;
+    const url = `/api/tables/availability?date=${encodeURIComponent(queryDate)}&time=${encodeURIComponent(queryTime)}&guests=${encodeURIComponent(String(queryGuests))}&sessionId=${encodeURIComponent(lockSessionId)}`;
 
     fetch(url, { cache: 'no-store' })
       .then(async (res) => {
@@ -177,6 +218,35 @@ export default function BookingDiagramPage() {
         setTables(fetchedTables);
         setFetchError('');
         setSelectedTableId(pickDefaultTableId(fetchedTables));
+
+        // Đồng bộ trạng thái lock từ server (nếu phiên này đang giữ 1 bàn trên slot hiện tại)
+        const ownLockedTable = fetchedTables.find(
+          (t) => t.isLockedByCurrentSession && t.lockedUntil
+        );
+        if (ownLockedTable && ownLockedTable.lockedUntil) {
+          const syncedLock: ClientTableLockState = {
+            lockKey: `${ownLockedTable.id}:${queryDate}:${queryTime}`,
+            tableId: ownLockedTable.id,
+            tableNumber: ownLockedTable.tableNumber,
+            date: queryDate,
+            time: queryTime,
+            sessionId: lockSessionId,
+            expiresAt: ownLockedTable.lockedUntil,
+          };
+          writeActiveTableLock(syncedLock);
+          setActiveLock(syncedLock);
+        } else {
+          const existingLocal = readActiveTableLock();
+          if (
+            existingLocal &&
+            existingLocal.date === queryDate &&
+            existingLocal.time === queryTime
+          ) {
+            writeActiveTableLock(null);
+            setActiveLock(null);
+          }
+        }
+
         setLoadedQueryKey(currentQueryKey);
       })
       .catch(() => {
@@ -190,7 +260,7 @@ export default function BookingDiagramPage() {
     return () => {
       isCancelled = true;
     };
-  }, [isLoaded, queryDate, queryTime, queryGuests, currentQueryKey, pickDefaultTableId]);
+  }, [isLoaded, queryDate, queryTime, queryGuests, lockSessionId, currentQueryKey, pickDefaultTableId]);
 
   const handleRetry = () => {
     setFetchError('');
@@ -198,21 +268,128 @@ export default function BookingDiagramPage() {
     setReloadNonce((n) => n + 1);
   };
 
-  const handleSelectTable = (table: AvailabilityTable) => {
-    if (!table.isAvailable || table.capacity < queryGuests) {
+  const acquireLockForTable = useCallback(
+    async (table: AvailabilityTable): Promise<ClientTableLockState | null> => {
+      // Nếu chính session này đang giữ khóa bàn khác (hoặc slot khác), giải phóng bàn cũ trước
+      const existingLock = readActiveTableLock();
+      if (
+        existingLock &&
+        (existingLock.tableId !== table.id ||
+          existingLock.date !== queryDate ||
+          existingLock.time !== queryTime)
+      ) {
+        await releaseClientTableLock(existingLock, 'USER_CANCELLED');
+        setActiveLock(null);
+      }
+
+      const result = await acquireClientTableLock({
+        tableId: table.id,
+        tableNumber: table.tableNumber,
+        date: queryDate,
+        time: queryTime,
+        sessionId: lockSessionId,
+      });
+
+      if (!result.ok || !result.lock) {
+        const msg =
+          result.message ||
+          `Bàn ${table.tableNumber} vừa được khách hàng khác giữ chỗ. Vui lòng chọn bàn khác.`;
+        setActionWarning(msg);
+        showToast(msg, 'error');
+        setReloadNonce((n) => n + 1);
+        return null;
+      }
+
+      setActiveLock(result.lock);
+      setActionWarning('');
+      setTables((prev) =>
+        prev.map((item) => {
+          if (item.id === table.id) {
+            return {
+              ...item,
+              isLocked: false,
+              isLockedByCurrentSession: true,
+              lockedUntil: result.lock?.expiresAt ?? null,
+              isAvailable: true,
+            };
+          }
+          if (item.isLockedByCurrentSession) {
+            return {
+              ...item,
+              isLockedByCurrentSession: false,
+              lockedUntil: null,
+            };
+          }
+          return item;
+        })
+      );
+
+      return result.lock;
+    },
+    [queryDate, queryTime, lockSessionId, showToast]
+  );
+
+  const handleSelectTable = async (table: AvailabilityTable) => {
+    if (!table.isAvailable || table.capacity < queryGuests || lockingTableId) {
       return;
     }
-    setSelectedTableId(table.id);
+
+    // Nếu bàn đã được chính phiên hiện tại giữ khóa trên đúng slot này thì chỉ chọn lại UI
+    if (
+      activeLock &&
+      activeLock.tableId === table.id &&
+      activeLock.date === queryDate &&
+      activeLock.time === queryTime &&
+      computeRemainingLockSeconds(activeLock.expiresAt) > 0
+    ) {
+      setSelectedTableId(table.id);
+      setActionWarning('');
+      return;
+    }
+
+    setLockingTableId(table.id);
     setActionWarning('');
     try {
-      sessionStorage.setItem('smares_selected_table_id', table.id);
+      const acquired = await acquireLockForTable(table);
+      if (acquired) {
+        setSelectedTableId(table.id);
+        showToast(`Đã giữ khóa Bàn ${table.tableNumber} trong 10 phút.`, 'success');
+      }
     } catch {
-      // Ignore storage quota errors
+      const errText = 'Mất kết nối máy chủ khi giữ khóa bàn. Vui lòng thử lại.';
+      setActionWarning(errText);
+      showToast(errText, 'error');
+    } finally {
+      setLockingTableId('');
     }
   };
 
+  const handleReleaseActiveLock = useCallback(
+    async (lock: ClientTableLockState, reason: 'USER_CANCELLED' | 'EXPIRED' = 'USER_CANCELLED') => {
+      setIsReleasingLock(true);
+      try {
+        await releaseClientTableLock(lock, reason);
+        setActiveLock(null);
+        setSelectedTableId('');
+        if (reason === 'EXPIRED') {
+          showToast(
+            `Thời gian giữ khóa Bàn ${lock.tableNumber} đã hết hạn. Vui lòng chọn lại bàn.`,
+            'warning'
+          );
+        } else {
+          showToast(`Đã hủy giữ khóa Bàn ${lock.tableNumber}.`, 'info');
+        }
+        setReloadNonce((n) => n + 1);
+      } finally {
+        setIsReleasingLock(false);
+      }
+    },
+    [showToast]
+  );
+
   const selectedTable =
     tables.find((t) => t.id === selectedTableId) ||
+    tables.find((t) => t.isLockedByCurrentSession && t.isAvailable && t.capacity >= queryGuests) ||
     tables.find((t) => t.isAvailable && t.capacity >= queryGuests) ||
     tables[0] ||
     null;
@@ -230,6 +407,8 @@ export default function BookingDiagramPage() {
   const eligibleTablesCount = tables.filter(
     (t) => t.isAvailable && t.capacity >= queryGuests
   ).length;
+  const bookedCount = tables.filter((t) => Boolean(t.isBooked)).length;
+  const otherLockedCount = tables.filter((t) => Boolean(t.isLocked && !t.isBooked)).length;
   const unavailableCount = tables.filter((t) => !t.isAvailable).length;
   const undersizedCount = tables.filter((t) => t.capacity < queryGuests).length;
 
@@ -244,7 +423,7 @@ export default function BookingDiagramPage() {
       )
   );
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (!hasContactInfo) {
       setActionWarning(
         'Vui lòng hoàn tất Họ tên và Số điện thoại ở Bước 1 trước khi chuyển sang chọn món.'
@@ -256,64 +435,101 @@ export default function BookingDiagramPage() {
       return;
     }
 
+    setIsContinuing(true);
     try {
-      sessionStorage.setItem('smares_selected_table_id', selectedTable.id);
-    } catch {
-      // Ignore storage quota errors
+      // Đảm bảo bàn đang chọn đã được khóa thành công bằng lockSessionId trước khi qua Bước 3
+      const currentLock = readActiveTableLock();
+      const alreadyLockedSameTable = Boolean(
+        currentLock &&
+          currentLock.tableId === selectedTable.id &&
+          currentLock.date === queryDate &&
+          currentLock.time === queryTime &&
+          computeRemainingLockSeconds(currentLock.expiresAt) > 0
+      );
+
+      if (!alreadyLockedSameTable) {
+        const acquired = await acquireLockForTable(selectedTable);
+        if (!acquired) {
+          return;
+        }
+      }
+
+      setBookingInfo((prev) => ({
+        name: prev?.name || '',
+        phone: prev?.phone || '',
+        email: prev?.email || '',
+        date: queryDate,
+        time: queryTime,
+        guests: queryGuests,
+        note: prev?.note || '',
+        tableId: selectedTable.id,
+        tableNumber: selectedTable.tableNumber,
+        tableType: selectedTable.zoneName,
+        tableCapacity: selectedTable.capacity,
+      }));
+
+      router.push('/booking/menu');
+    } finally {
+      setIsContinuing(false);
     }
-
-    setBookingInfo((prev) => ({
-      name: prev?.name || '',
-      phone: prev?.phone || '',
-      email: prev?.email || '',
-      date: queryDate,
-      time: queryTime,
-      guests: queryGuests,
-      note: prev?.note || '',
-      tableNumber: selectedTable.tableNumber,
-      tableType: selectedTable.zoneName,
-      tableCapacity: selectedTable.capacity,
-    }));
-
-    router.push('/booking/menu');
   };
 
   const renderTableButton = (table: AvailabilityTable, shapeClass: string) => {
-    const isBooked = !table.isAvailable;
+    const isBooked = Boolean(table.isBooked ?? (!table.isAvailable && !table.isLocked));
+    const isLockedByOther = Boolean(table.isLocked && !isBooked);
+    const isLockedByMe = Boolean(
+      table.isLockedByCurrentSession ||
+        (activeLock &&
+          activeLock.tableId === table.id &&
+          activeLock.date === queryDate &&
+          activeLock.time === queryTime)
+    );
     const isUndersized = table.capacity < queryGuests;
-    const isDisabled = isBooked || isUndersized;
-    const isSelected = selectedTable?.id === table.id && !isDisabled;
+    const isDisabled = isBooked || isLockedByOther || isUndersized || Boolean(lockingTableId);
+    const isSelected = selectedTable?.id === table.id && !isBooked && !isLockedByOther && !isUndersized;
+    const isCurrentlyLocking = lockingTableId === table.id;
 
     let colorClasses =
       'bg-[#dcfce7] text-[#15803d] border-[#86efac] hover:bg-[#bbf7d0] hover:scale-105 cursor-pointer shadow-xs';
     let subLabel = `${table.capacity} chỗ`;
+    let titleText = `Bàn ${table.tableNumber} - ${table.zoneName} (${table.capacity} chỗ)`;
 
     if (isBooked) {
       colorClasses =
         'bg-[#fee2e2] text-[#b91c1c] border-[#fca5a5] opacity-75 cursor-not-allowed';
       subLabel = 'Đã đặt';
+      titleText = `Bàn ${table.tableNumber} đã có khách đặt trong khung giờ trùng lặp với ${queryTime}`;
+    } else if (isLockedByOther) {
+      const rem = table.lockedUntil
+        ? computeRemainingLockSeconds(table.lockedUntil, nowTickMs)
+        : 0;
+      const countdownStr = rem > 0 ? formatCountdownHhMmSs(rem) : '00:00:00';
+      colorClasses =
+        'bg-[#fff7ed] text-[#c2410c] border-[#fdba74] opacity-90 cursor-not-allowed';
+      subLabel = `Đang giữ chỗ • ${countdownStr}`;
+      titleText = `Đang có khách giữ chỗ Bàn ${table.tableNumber} (còn ${countdownStr})`;
     } else if (isUndersized) {
       colorClasses =
         'bg-[#fef3c7] text-[#b45309] border-[#fde68a] opacity-85 cursor-not-allowed';
       subLabel = `Chỉ ${table.capacity} chỗ`;
+      titleText = `Bàn ${table.tableNumber} (${table.capacity} chỗ) nhỏ hơn ${queryGuests} khách`;
+    } else if (isCurrentlyLocking) {
+      colorClasses =
+        'bg-[#14532d]/80 text-white border-[#22c55e] animate-pulse cursor-wait';
+      subLabel = 'Đang khóa...';
     } else if (isSelected) {
       colorClasses =
         'bg-[#14532d] text-white border-[#22c55e] ring-4 ring-[#bbf7d0] scale-105 shadow-lg cursor-pointer';
+      subLabel = isLockedByMe ? 'Bạn đang giữ' : `${table.capacity} chỗ`;
     }
 
     return (
       <button
         key={table.id}
         type="button"
-        onClick={() => handleSelectTable(table)}
+        onClick={() => void handleSelectTable(table)}
         disabled={isDisabled}
-        title={
-          isBooked
-            ? `Bàn ${table.tableNumber} đã có khách đặt vào khung giờ ${queryTime}`
-            : isUndersized
-              ? `Bàn ${table.tableNumber} (${table.capacity} chỗ) nhỏ hơn ${queryGuests} khách`
-              : `Bàn ${table.tableNumber} - ${table.zoneName} (${table.capacity} chỗ)`
-        }
+        title={titleText}
         className={`${shapeClass} flex flex-col items-center justify-center font-bold transition-all relative border px-2 ${colorClasses}`}
       >
         {isSelected && (
@@ -322,7 +538,9 @@ export default function BookingDiagramPage() {
           </span>
         )}
         <span className="text-base sm:text-lg font-serif font-bold">{table.tableNumber}</span>
-        <span className="text-[11px] font-medium opacity-90">{subLabel}</span>
+        <span className="text-[10px] sm:text-[11px] font-medium opacity-90 text-center leading-tight">
+          {subLabel}
+        </span>
       </button>
     );
   };
@@ -350,6 +568,16 @@ export default function BookingDiagramPage() {
       <BookingStepper currentStep={2} />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 w-full">
+        {activeLock && (
+          <LockCountdownBanner
+            lock={activeLock}
+            isReleasing={isReleasingLock}
+            onExpired={(expired) => void handleReleaseActiveLock(expired, 'EXPIRED')}
+            onRelease={(lock) => void handleReleaseActiveLock(lock, 'USER_CANCELLED')}
+            className="mb-6"
+          />
+        )}
+
         {!isFetching && !hasContactInfo && (
           <div className="mb-6 bg-[#fffbeb] border border-[#fde68a] rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-start gap-3 text-sm text-[#92400e]">
@@ -391,6 +619,10 @@ export default function BookingDiagramPage() {
                 <div className="flex items-center gap-2">
                   <span className="w-3.5 h-3.5 bg-[#fee2e2] border border-[#fca5a5] rounded-md shadow-xs" />
                   <span className="text-stone-700">Đã đặt</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-3.5 h-3.5 bg-[#fff7ed] border border-[#fdba74] rounded-md shadow-xs" />
+                  <span className="text-stone-700">Đang có khách giữ chỗ</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="w-3.5 h-3.5 bg-[#fef3c7] border border-[#fde68a] rounded-md shadow-xs" />
@@ -477,8 +709,11 @@ export default function BookingDiagramPage() {
                     <span>
                       Có <strong className="text-[#14532d]">{eligibleTablesCount} bàn</strong> sẵn sàng cho {queryGuests} khách.
                     </span>
-                    {unavailableCount > 0 && (
-                      <span>• {unavailableCount} bàn đã có lịch đặt trong khung giờ này.</span>
+                    {bookedCount > 0 && (
+                      <span>• {bookedCount} bàn đã có lịch đặt trong khung giờ này.</span>
+                    )}
+                    {otherLockedCount > 0 && (
+                      <span>• {otherLockedCount} bàn đang có khách giữ chỗ thanh toán.</span>
                     )}
                     {undersizedCount > 0 && (
                       <span>• {undersizedCount} bàn không đủ sức chứa ({queryGuests} khách).</span>
@@ -701,11 +936,15 @@ export default function BookingDiagramPage() {
 
               <button
                 type="button"
-                onClick={handleContinue}
-                disabled={isFetching || !isSelectedTableEligible}
+                onClick={() => void handleContinue()}
+                disabled={isFetching || !isSelectedTableEligible || isContinuing || Boolean(lockingTableId)}
                 className="w-full flex items-center justify-center gap-2 bg-[#14532d] hover:bg-[#15803d] disabled:bg-stone-300 disabled:text-stone-500 text-white font-semibold py-4 rounded-xl shadow-[0_8px_24px_-4px_rgba(20,83,45,0.45)] hover:shadow-[0_12px_28px_-4px_rgba(20,83,45,0.6)] disabled:shadow-none transition-all text-sm sm:text-base mb-3 cursor-pointer"
               >
-                <span>Tiếp tục: Chọn món ăn vào Giỏ hàng</span>
+                <span>
+                  {isContinuing
+                    ? 'Đang xác nhận khóa bàn...'
+                    : 'Tiếp tục: Chọn món ăn vào Giỏ hàng'}
+                </span>
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <path d="M5 12h14" />
                   <path d="m12 5 7 7-7 7" />

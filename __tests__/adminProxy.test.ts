@@ -3,7 +3,7 @@ import { NextRequest } from 'next/server';
 import { AUTH_COOKIE_NAME, signAuthToken } from '@/app/lib/auth';
 import { config, proxy } from '@/proxy';
 
-describe('Proxy RBAC protection for /admin routes (BR-OPS-03)', () => {
+describe('Proxy RBAC protection for /admin routes (BR-OPS-03 & TK-188)', () => {
   const previousJwtSecret = process.env.JWT_SECRET;
 
   beforeEach(() => {
@@ -23,10 +23,10 @@ describe('Proxy RBAC protection for /admin routes (BR-OPS-03)', () => {
     expect(config.matcher).toContain('/admin/:path*');
   });
 
-  it('redirects unauthenticated requests on /admin, /admin/menu, and /admin/analytics to /login', () => {
+  it('redirects unauthenticated requests on /admin, /admin/menu, and /admin/analytics to /login', async () => {
     for (const path of ['/admin', '/admin/menu', '/admin/analytics']) {
       const req = new NextRequest(`http://localhost:3000${path}`);
-      const res = proxy(req);
+      const res = await proxy(req);
       expect(res.status).toBe(307);
       const location = res.headers.get('location') ?? '';
       expect(location).toContain('/login');
@@ -34,7 +34,7 @@ describe('Proxy RBAC protection for /admin routes (BR-OPS-03)', () => {
     }
   });
 
-  it('redirects non-admin authenticated users (customer, staff) with error=forbidden', () => {
+  it('redirects non-admin authenticated users (customer, staff) to /403', async () => {
     for (const role of ['customer', 'staff'] as const) {
       const token = signAuthToken({
         userId: `${role}-1`,
@@ -48,15 +48,15 @@ describe('Proxy RBAC protection for /admin routes (BR-OPS-03)', () => {
             cookie: `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}`,
           },
         });
-        const res = proxy(req);
+        const res = await proxy(req);
         expect(res.status).toBe(307);
         const location = res.headers.get('location') ?? '';
-        expect(location).toContain('error=forbidden');
+        expect(new URL(location).pathname).toBe('/403');
       }
     }
   });
 
-  it('allows admin requests through /admin, /admin/menu, and /admin/analytics', () => {
+  it('allows admin requests through /admin, /admin/menu, and /admin/analytics', async () => {
     const adminToken = signAuthToken({
       userId: 'admin-1',
       email: 'admin@smares.vn',
@@ -69,7 +69,7 @@ describe('Proxy RBAC protection for /admin routes (BR-OPS-03)', () => {
           cookie: `${AUTH_COOKIE_NAME}=${encodeURIComponent(adminToken)}`,
         },
       });
-      const res = proxy(req);
+      const res = await proxy(req);
       expect(res.status).toBe(200);
       expect(res.headers.get('location')).toBeNull();
     }
