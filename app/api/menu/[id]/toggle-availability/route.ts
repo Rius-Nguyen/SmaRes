@@ -4,6 +4,8 @@ import connectDB from '@/app/lib/db';
 import MenuItem from '@/app/models/MenuItem';
 import { requireRole } from '@/app/lib/auth';
 
+export const dynamic = 'force-dynamic';
+
 interface ToggleAvailabilityBody {
   isAvailable?: unknown;
   is_available?: unknown;
@@ -29,15 +31,48 @@ export async function PATCH(
 
     let rawBody: unknown = {};
     try {
-      rawBody = await request.json();
+      const rawText = await request.text();
+      if (rawText.trim() !== '') {
+        rawBody = JSON.parse(rawText);
+      }
     } catch {
-      rawBody = {};
+      return NextResponse.json(
+        { success: false, message: 'Dữ liệu JSON không hợp lệ.' },
+        { status: 400 }
+      );
     }
 
-    const body: ToggleAvailabilityBody =
-      typeof rawBody === 'object' && rawBody !== null
-        ? (rawBody as ToggleAvailabilityBody)
-        : {};
+    if (typeof rawBody !== 'object' || rawBody === null || Array.isArray(rawBody)) {
+      return NextResponse.json(
+        { success: false, message: 'Dữ liệu cập nhật trạng thái món không hợp lệ.' },
+        { status: 400 }
+      );
+    }
+
+    const body = rawBody as ToggleAvailabilityBody;
+    if (body.isAvailable !== undefined && typeof body.isAvailable !== 'boolean') {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Trạng thái phục vụ (isAvailable) phải là giá trị boolean.',
+        },
+        { status: 400 }
+      );
+    }
+
+    if (
+      body.isAvailable === undefined &&
+      body.is_available !== undefined &&
+      typeof body.is_available !== 'boolean'
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Trạng thái phục vụ (isAvailable) phải là giá trị boolean.',
+        },
+        { status: 400 }
+      );
+    }
 
     await connectDB();
 
