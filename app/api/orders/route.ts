@@ -11,7 +11,9 @@ import Order, {
 } from '@/app/models/Order';
 import MenuItem from '@/app/models/MenuItem';
 import Table from '@/app/models/Table';
+import Reservation from '@/app/models/Reservation';
 import { getAuthUser, requireAuth, requireRole } from '@/app/lib/auth';
+import { isSlotEligibleForSpecialPreOrder } from '@/app/lib/reservationHelpers';
 import {
   emitRealtimeEvent,
   REALTIME_EVENT_TYPES,
@@ -160,6 +162,7 @@ export async function POST(request: NextRequest) {
 
     const resolvedItems: IOrderItem[] = [];
     let totalAmount = 0;
+    let hasSpecialPreOrderDish = false;
 
     for (const rawItem of body.items) {
       if (typeof rawItem !== 'object' || rawItem === null) {
@@ -211,6 +214,10 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      if ((menuItem as { isPreOrderOnly?: boolean }).isPreOrderOnly === true) {
+        hasSpecialPreOrderDish = true;
+      }
+
       const serverPrice = menuItem.price;
       totalAmount += serverPrice * quantity;
 
@@ -221,6 +228,50 @@ export async function POST(request: NextRequest) {
         quantity,
         customizations: normalizeCustomizations(item.customizations),
       });
+    }
+
+    if (hasSpecialPreOrderDish) {
+      let resolvedBookingDate =
+        typeof body.bookingDate === 'string' ? body.bookingDate.trim() : '';
+      let resolvedBookingTime =
+        typeof body.bookingTime === 'string' ? body.bookingTime.trim() : '';
+
+      const rawReservationId =
+        typeof body.reservationId === 'string' ? body.reservationId.trim() : '';
+      if (rawReservationId && mongoose.Types.ObjectId.isValid(rawReservationId)) {
+        const reservationDoc = (await Reservation.findById(rawReservationId)
+          .select('date time')
+          .lean()) as { date?: string; time?: string } | null;
+        if (!reservationDoc?.date || !reservationDoc?.time) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'SPECIAL_PREORDER_REQUIRES_ADVANCE_BOOKING',
+              message:
+                'Không tìm thấy lịch đặt bàn hợp lệ cho món đặc quyền (yêu cầu đặt trước tối thiểu 5 tiếng).',
+            },
+            { status: 400 }
+          );
+        }
+        resolvedBookingDate = reservationDoc.date;
+        resolvedBookingTime = reservationDoc.time;
+      }
+
+      if (
+        !resolvedBookingDate ||
+        !resolvedBookingTime ||
+        !isSlotEligibleForSpecialPreOrder(resolvedBookingDate, resolvedBookingTime)
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'SPECIAL_PREORDER_LEAD_TIME_TOO_SHORT',
+            message:
+              'Các món đặc quyền chế biến công phu chỉ phục vụ khi đặt bàn trước giờ hẹn tối thiểu 5 tiếng.',
+          },
+          { status: 400 }
+        );
+      }
     }
 
     const rawTableNumber = body.tableNumber ?? body.table_number;

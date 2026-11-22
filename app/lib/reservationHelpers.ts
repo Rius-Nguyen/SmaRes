@@ -1,9 +1,12 @@
 import crypto from 'node:crypto';
 
 export const CANCELLATION_MIN_NOTICE_MINUTES = 60;
-export const BOOKING_MIN_ADVANCE_MINUTES = 30; // BR-RES-13: Đặt bàn trước tối thiểu 30 phút
+export const BOOKING_MIN_ADVANCE_MINUTES = 30; // Đặt bàn trước tối thiểu 30 phút
 export const BOOKING_MIN_ADVANCE_MS = BOOKING_MIN_ADVANCE_MINUTES * 60 * 1000;
-export const RESERVATION_HOLD_GRACE_MINUTES = 15; // BR-RES-09: giữ bàn tối đa 15 phút sau giờ hẹn
+export const SPECIAL_PREORDER_MIN_ADVANCE_HOURS = 5;
+export const SPECIAL_PREORDER_MIN_ADVANCE_MINUTES =
+  SPECIAL_PREORDER_MIN_ADVANCE_HOURS * 60; // Món đặc quyền yêu cầu đặt bàn trước tối thiểu 5 tiếng
+export const RESERVATION_HOLD_GRACE_MINUTES = 15; // Giữ bàn tối đa 15 phút sau giờ hẹn
 export const RESERVATION_HOLD_GRACE_MS = RESERVATION_HOLD_GRACE_MINUTES * 60 * 1000;
 export const DINING_DURATION_MINUTES = 150; // BR-RES-11: Thời lượng dùng bữa tối đa 2 giờ 30 phút (150 phút)
 export const DINING_DURATION_MS = DINING_DURATION_MINUTES * 60 * 1000;
@@ -434,7 +437,7 @@ export function isVietnamSlotInPast(
 }
 
 /**
- * BR-RES-13: Checks whether a (date, time) slot in Vietnam timezone (+07:00)
+ * Checks whether a (date, time) slot in Vietnam timezone (+07:00)
  * violates the minimum advance booking lead time (default: 30 minutes).
  */
 export function isSlotBeforeMinAdvance(
@@ -452,6 +455,19 @@ export function isSlotBeforeMinAdvance(
     return true;
   }
   return slotMs < nowMs + minAdvanceMinutes * 60 * 1000;
+}
+
+/**
+ * Checks whether a (date, time) slot in Vietnam timezone (+07:00)
+ * has enough lead time (default: 5 hours = 300 minutes) to order special pre-order dishes.
+ */
+export function isSlotEligibleForSpecialPreOrder(
+  date: string,
+  time: string,
+  nowMs: number = Date.now(),
+  minAdvanceMinutes: number = SPECIAL_PREORDER_MIN_ADVANCE_MINUTES
+): boolean {
+  return !isSlotBeforeMinAdvance(date, time, nowMs, minAdvanceMinutes);
 }
 
 /**

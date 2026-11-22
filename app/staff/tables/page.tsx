@@ -660,7 +660,7 @@ export default function StaffTablesPage() {
         <div className="flex justify-center items-center py-20 bg-white rounded-2xl border border-[#ebe7df]">
           <div className="animate-spin rounded-full h-10 w-10 border-3 border-[#14532d]/20 border-t-[#14532d]" />
           <span className="ml-3 text-[#57534e] font-medium text-sm">
-            Đang tải sơ đồ bàn từ MongoDB...
+            Đang tải sơ đồ bàn từ hệ thống...
           </span>
         </div>
       ) : filteredTables.length === 0 ? (
@@ -971,7 +971,7 @@ export default function StaffTablesPage() {
                             ? 'Quá hạn giữ chỗ 15 phút (No-show)'
                             : nowMs >= reservedStartMs
                               ? activeRes
-                                ? 'Đang giữ chỗ 15p (BR-RES-09)'
+                                ? 'Đang giữ chỗ 15p'
                                 : 'Đang giữ bàn 15p tại quầy'
                               : 'Đếm ngược tới giờ hẹn'}
                         </p>

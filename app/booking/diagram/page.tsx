@@ -296,7 +296,6 @@ export default function BookingDiagramPage() {
           result.message ||
           `Bàn ${table.tableNumber} vừa được khách hàng khác giữ chỗ. Vui lòng chọn bàn khác.`;
         setActionWarning(msg);
-        showToast(msg, 'error');
         setReloadNonce((n) => n + 1);
         return null;
       }
@@ -327,7 +326,7 @@ export default function BookingDiagramPage() {
 
       return result.lock;
     },
-    [queryDate, queryTime, lockSessionId, showToast]
+    [queryDate, queryTime, lockSessionId]
   );
 
   const handleSelectTable = async (table: AvailabilityTable) => {
@@ -359,7 +358,6 @@ export default function BookingDiagramPage() {
     } catch {
       const errText = 'Mất kết nối máy chủ khi giữ khóa bàn. Vui lòng thử lại.';
       setActionWarning(errText);
-      showToast(errText, 'error');
     } finally {
       setLockingTableId('');
     }

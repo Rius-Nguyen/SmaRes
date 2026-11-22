@@ -11,6 +11,7 @@ export interface SpecialDishModalProps {
   isOpen?: boolean;
   onClose: () => void;
   bookingHref?: string;
+  lockReason?: 'NO_BOOKING' | 'SHORT_LEAD_TIME';
 }
 
 export default function SpecialDishModal({
@@ -18,6 +19,7 @@ export default function SpecialDishModal({
   isOpen = true,
   onClose,
   bookingHref = '/booking',
+  lockReason = 'NO_BOOKING',
 }: SpecialDishModalProps) {
   const { isAdmin } = useAuthSession();
   if (!isOpen || !dish) return null;
@@ -83,11 +85,23 @@ export default function SpecialDishModal({
         </p>
 
         <p className="text-xs text-stone-600 leading-relaxed mb-6">
-          Món ăn này được bếp trưởng chế biến kỳ công với nguyên liệu tuyển chọn tươi sống.
-          <strong className="text-[#1c1917]">
-            {' '}
-            Chỉ phục vụ khi quý khách đã hoàn tất đặt bàn trước.
-          </strong>
+          {lockReason === 'SHORT_LEAD_TIME' ? (
+            <>
+              Món ăn này được bếp trưởng chuẩn bị và hầm nấu công phu với nguyên liệu tuyển chọn.
+              <strong className="text-[#1c1917]">
+                {' '}
+                Chỉ áp dụng khi lịch đặt bàn cách giờ dùng bữa tối thiểu 5 tiếng.
+              </strong>
+            </>
+          ) : (
+            <>
+              Món ăn này được bếp trưởng chế biến kỳ công với nguyên liệu tuyển chọn tươi sống.
+              <strong className="text-[#1c1917]">
+                {' '}
+                Chỉ phục vụ khi quý khách đặt bàn trước tối thiểu 5 tiếng so với giờ dùng bữa.
+              </strong>
+            </>
+          )}
         </p>
 
         <div className="space-y-2.5">
@@ -97,7 +111,11 @@ export default function SpecialDishModal({
               onClick={onClose}
               className="inline-flex items-center justify-center gap-2 w-full bg-[#14532d] hover:bg-[#15803d] text-white font-bold py-3.5 px-4 rounded-xl text-sm shadow-[0_8px_20px_-4px_rgba(20,83,45,0.4)] transition-all text-center"
             >
-              <span>Đặt bàn ngay để mở khóa món này</span>
+              <span>
+                {lockReason === 'SHORT_LEAD_TIME'
+                  ? 'Đổi giờ đặt bàn (trước ít nhất 5 tiếng)'
+                  : 'Đặt bàn trước để mở khóa món này'}
+              </span>
               <svg
                 className="w-4 h-4"
                 viewBox="0 0 24 24"

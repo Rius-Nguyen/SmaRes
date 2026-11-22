@@ -230,7 +230,7 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           error: 'BOOKING_LEAD_TIME_TOO_SHORT',
-          message: 'Vui lòng đặt bàn trước giờ hẹn tối thiểu 30 phút (BR-RES-13).',
+          message: 'Vui lòng đặt bàn trước giờ hẹn tối thiểu 30 phút.',
         },
         { status: 400 }
       );

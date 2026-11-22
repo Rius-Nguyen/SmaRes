@@ -15,26 +15,9 @@ import {
 
 type FilterTab = 'ALL' | 'PENDING' | 'COOKING';
 type AuthState = 'ok' | 'unauthorized' | 'forbidden';
-type SseConnectionState = 'connecting' | 'live' | 'reconnecting';
+type SyncConnectionState = 'live' | 'reconnecting';
 
-interface SseOrderEventPayload {
-  orderId?: string;
-  orderCode?: string;
-  tableNumber?: string;
-  status?: string;
-}
-
-function parseSseOrderPayload(rawData: string): SseOrderEventPayload | null {
-  try {
-    const parsed: unknown = JSON.parse(rawData);
-    if (typeof parsed !== 'object' || parsed === null) {
-      return null;
-    }
-    return parsed as SseOrderEventPayload;
-  } catch {
-    return null;
-  }
-}
+const KDS_POLL_INTERVAL_MS = 12000;
 
 interface OrdersApiResponse {
   success: boolean;
@@ -67,9 +50,7 @@ export default function KDSPage() {
   const [orders, setOrders] = useState<KDSOrder[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
-  const [autoRefresh, setAutoRefresh] = useState<boolean>(true);
-  const [sseState, setSseState] = useState<SseConnectionState>('connecting');
-  const [sseReconnectNonce, setSseReconnectNonce] = useState<number>(0);
+  const [syncState, setSyncState] = useState<SyncConnectionState>('live');
   const [activeFilter, setActiveFilter] = useState<FilterTab>('ALL');
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [authState, setAuthState] = useState<AuthState>('ok');
@@ -77,13 +58,11 @@ export default function KDSPage() {
   const [lastSyncedTime, setLastSyncedTime] = useState<string>('');
   const [reloadNonce, setReloadNonce] = useState<number>(0);
 
-  // Refs for optimistic update & pending mutation guard across SSE & fallback sync
+  // Refs for optimistic update & pending mutation guard during background polling
   const inFlightOrderIdsRef = useRef<Map<string, number>>(new Map());
   const lastMutationAtRef = useRef<Record<string, number>>({});
   const ordersRef = useRef<KDSOrder[]>([]);
   const isMountedRef = useRef<boolean>(true);
-  const hasConnectedSseOnceRef = useRef<boolean>(false);
-  const sseSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     ordersRef.current = orders;
@@ -192,11 +171,14 @@ export default function KDSPage() {
       if (snapshot.kind === 'auth') {
         setAuthState(snapshot.authState);
         setErrorBanner(snapshot.message);
+        setSyncState('reconnecting');
       } else if (snapshot.kind === 'error') {
         setErrorBanner(snapshot.message);
+        setSyncState('reconnecting');
       } else {
         setAuthState('ok');
         setErrorBanner(null);
+        setSyncState('live');
         setOrders((prev) => mergePolledOrders(prev, snapshot.orders, snapshot.fetchStartedAt));
         setLastSyncedTime(
           new Date().toLocaleTimeString('vi-VN', {
@@ -231,97 +213,48 @@ export default function KDSPage() {
     };
   }, [fetchOrdersSnapshot, applyOrdersSnapshot, reloadNonce]);
 
-  // Kết nối SSE thời gian thực (/api/realtime/events) với tự kết nối lại
+  // Tự động đồng bộ định kỳ mỗi 12 giây và tạm dừng khi ẩn tab để tối ưu tài nguyên Vercel
   useEffect(() => {
-    if (!autoRefresh || authState !== 'ok') {
+    if (authState !== 'ok') {
       return;
     }
 
-    const eventSource = new EventSource('/api/realtime/events');
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
 
-    const scheduleRealtimeSync = () => {
-      if (sseSyncTimerRef.current !== null) {
-        clearTimeout(sseSyncTimerRef.current);
+    const startPolling = () => {
+      if (pollInterval !== null || document.visibilityState === 'hidden') {
+        return;
       }
-      sseSyncTimerRef.current = setTimeout(() => {
-        sseSyncTimerRef.current = null;
+      pollInterval = setInterval(() => {
+        if (document.visibilityState === 'hidden') return;
         void loadOrders();
-      }, 150);
+      }, KDS_POLL_INTERVAL_MS);
     };
 
-    const handleOpen = () => {
-      setSseState('live');
-      if (hasConnectedSseOnceRef.current) {
-        void loadOrders();
+    const stopPolling = () => {
+      if (pollInterval !== null) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        stopPolling();
       } else {
-        hasConnectedSseOnceRef.current = true;
+        void loadOrders();
+        startPolling();
       }
     };
 
-    const handleError = () => {
-      setSseState('reconnecting');
-      if (eventSource.readyState === EventSource.CLOSED && reconnectTimer === null) {
-        reconnectTimer = setTimeout(() => {
-          reconnectTimer = null;
-          setSseReconnectNonce((prev) => prev + 1);
-        }, 5000);
-      }
-    };
-
-    const handleOrderCreated = (event: Event) => {
-      const rawData =
-        'data' in event && typeof (event as { data?: unknown }).data === 'string'
-          ? (event as { data: string }).data
-          : '';
-      const payload = rawData ? parseSseOrderPayload(rawData) : null;
-      const code =
-        payload?.orderCode ||
-        (payload?.orderId ? `#${payload.orderId.slice(-6).toUpperCase()}` : 'mới');
-      const tableLabel = formatTableHeading(payload?.tableNumber);
-      showToast(`Đơn mới ${code} (${tableLabel}) vừa được gửi vào bếp!`, 'info');
-      scheduleRealtimeSync();
-    };
-
-    const handleOrderStatusUpdated = () => {
-      scheduleRealtimeSync();
-    };
-
-    eventSource.addEventListener('open', handleOpen);
-    eventSource.addEventListener('error', handleError);
-    eventSource.addEventListener('ORDER_CREATED', handleOrderCreated);
-    eventSource.addEventListener('ORDER_STATUS_UPDATED', handleOrderStatusUpdated);
+    startPolling();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      eventSource.removeEventListener('open', handleOpen);
-      eventSource.removeEventListener('error', handleError);
-      eventSource.removeEventListener('ORDER_CREATED', handleOrderCreated);
-      eventSource.removeEventListener('ORDER_STATUS_UPDATED', handleOrderStatusUpdated);
-      eventSource.close();
-      if (reconnectTimer !== null) {
-        clearTimeout(reconnectTimer);
-      }
-      if (sseSyncTimerRef.current !== null) {
-        clearTimeout(sseSyncTimerRef.current);
-        sseSyncTimerRef.current = null;
-      }
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [autoRefresh, authState, sseReconnectNonce, loadOrders, showToast]);
-
-  // Đồng bộ an toàn mỗi 60s chỉ khi SSE chưa ở trạng thái Live
-  useEffect(() => {
-    if (!autoRefresh || authState !== 'ok' || sseState === 'live') {
-      return;
-    }
-
-    const fallbackInterval = setInterval(() => {
-      void loadOrders();
-    }, 60000);
-
-    return () => {
-      clearInterval(fallbackInterval);
-    };
-  }, [autoRefresh, authState, sseState, loadOrders]);
+  }, [authState, loadOrders]);
 
   const handleManualRefresh = () => {
     setIsRefreshing(true);
@@ -532,7 +465,7 @@ export default function KDSPage() {
     }
   };
 
-  const isRealtimeLive = autoRefresh && authState === 'ok' && sseState === 'live';
+  const isSyncLive = authState === 'ok' && syncState === 'live';
 
   return (
     <main className="min-h-screen bg-[#1c1917] text-[#faf8f5] pb-20">
@@ -545,32 +478,24 @@ export default function KDSPage() {
           >
             KDS
           </Link>
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="font-serif font-bold text-base sm:text-lg text-[#faf8f5] leading-none">
-                Bếp SmaRes — Kitchen Display System
-              </h1>
-              {!autoRefresh ? (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-stone-800 text-stone-400 border border-stone-700">
-                  <span className="w-2 h-2 rounded-full bg-stone-500" />
-                  Đã tạm dừng
-                </span>
-              ) : isRealtimeLive ? (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#14532d]/70 text-emerald-300 border border-emerald-600/60">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  Live
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-950/70 text-amber-300 border border-[#d97706]/60">
-                  <span className="w-2 h-2 rounded-full bg-[#fbbf24] animate-pulse" />
-                  Đang kết nối lại
-                </span>
-              )}
-            </div>
-            <p className="text-[11px] text-stone-400 mt-1">
-              Điều phối chế biến theo thời gian thực (SSE)
-              {lastSyncedTime ? ` • Đồng bộ lúc ${lastSyncedTime}` : ''}
-            </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="font-serif font-bold text-base sm:text-lg text-[#faf8f5] leading-none">
+              Bếp SmaRes — Kitchen Display System
+            </h1>
+            {isSyncLive ? (
+              <span
+                title={lastSyncedTime ? `Đồng bộ lúc ${lastSyncedTime}` : 'Tự động đồng bộ mỗi 12 giây'}
+                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#14532d]/70 text-emerald-300 border border-emerald-600/60"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                Đang đồng bộ
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-950/70 text-amber-300 border border-[#d97706]/60">
+                <span className="w-2 h-2 rounded-full bg-[#fbbf24] animate-pulse" />
+                Đang kết nối lại
+              </span>
+            )}
           </div>
         </div>
 
@@ -597,55 +522,6 @@ export default function KDSPage() {
               <path d="M16 21h5v-5" />
             </svg>
             <span>Làm mới</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setAutoRefresh((prev) => {
-                const next = !prev;
-                if (next) {
-                  setSseState('connecting');
-                }
-                return next;
-              });
-            }}
-            className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 border transition-all cursor-pointer ${
-              autoRefresh
-                ? 'bg-[#14532d]/60 border-emerald-600 text-emerald-200'
-                : 'bg-stone-800 border-stone-700 text-stone-400'
-            }`}
-          >
-            {autoRefresh ? (
-              <svg
-                className="w-3.5 h-3.5 text-emerald-400"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="12" cy="12" r="10" />
-                <polyline points="12 6 12 12 16 14" />
-              </svg>
-            ) : (
-              <svg
-                className="w-3.5 h-3.5 text-stone-400"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <rect x="6" y="4" width="4" height="16" />
-                <rect x="14" y="4" width="4" height="16" />
-              </svg>
-            )}
-            <span className="hidden sm:inline">
-              {autoRefresh ? 'Realtime SSE' : 'Đã tạm dừng'}
-            </span>
           </button>
 
           <Link
@@ -735,13 +611,13 @@ export default function KDSPage() {
           <div className="rounded-2xl border border-stone-800 bg-stone-950/80 py-20 flex flex-col items-center justify-center gap-3 text-center">
             <span className="w-10 h-10 rounded-full border-3 border-[#d97706]/30 border-t-[#d97706] animate-spin" />
             <p className="text-sm text-stone-300 font-medium">
-              Đang kết nối Bếp KDS và tải đơn hàng thực từ MongoDB...
+              Đang kết nối Bếp KDS và tải đơn hàng từ hệ thống...
             </p>
           </div>
         ) : (
           <>
             {/* =============================================================== */}
-            {/* KHỐI TK-164: TỔNG HỢP CHẾ BIẾN NHANH (BATCH COOKING SUMMARY)    */}
+            {/* KHỐI TỔNG HỢP CHẾ BIẾN NHANH                                    */}
             {/* =============================================================== */}
             <section className="bg-stone-950/90 rounded-2xl border-2 border-[#d97706]/80 p-5 shadow-2xl relative overflow-hidden">
               <div className="absolute top-0 right-0 transform translate-x-4 -translate-y-4 w-32 h-32 bg-[#d97706]/10 rounded-full blur-2xl pointer-events-none" />
@@ -764,7 +640,7 @@ export default function KDSPage() {
                   </span>
                   <div>
                     <h2 className="text-base sm:text-lg font-serif font-bold text-[#faf8f5] tracking-tight">
-                      Tổng Hợp Chế Biến Nhanh (Batch Cooking)
+                      Tổng Hợp Chế Biến Nhanh
                     </h2>
                     <p className="text-xs text-amber-300/90">
                       Tự động gom các món giống nhau giữa các bàn để đầu bếp xử lý đồng thời
@@ -935,7 +811,7 @@ export default function KDSPage() {
                     Không có vé đơn nào trong mục này
                   </p>
                   <p className="text-xs text-stone-400">
-                    Đơn hàng mới từ khách tại bàn hoặc đặt trước sẽ tự động xuất hiện ngay lập tức qua kênh Realtime.
+                    Đơn hàng mới từ khách tại bàn hoặc đặt trước sẽ tự động đồng bộ và xuất hiện tại đây.
                   </p>
                 </div>
               ) : (

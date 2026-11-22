@@ -96,10 +96,10 @@ const PAYMENT_METHOD_OPTIONS: readonly PaymentMethodOption[] = [
   },
   {
     id: 'VNPAY',
-    title: 'VNPay Sandbox (Thẻ ATM / VNPay QR / Visa / Mastercard)',
+    title: 'Cổng thanh toán VNPay (Thẻ ATM / VNPay QR / Visa / Mastercard)',
     subtitle:
-      'Thanh toán trực tuyến qua cổng VNPay Sandbox kèm xác thực chữ ký HMAC-SHA512 & IPN tự động',
-    badge: 'Tự động IPN',
+      'Thanh toán trực tuyến an toàn qua cổng VNPay — Hỗ trợ thẻ nội địa, VNPay QR và thẻ quốc tế',
+    badge: 'Xác nhận tự động',
   },
 ];
 
@@ -339,9 +339,9 @@ function DepositPaymentModalContent({
       if (!response.ok || !json.success || !json.data?.paymentUrl) {
         const msg =
           json.error === 'PAYMENT_CONFIG_MISSING'
-            ? `${json.message || 'Chưa cấu hình khóa VNPay Sandbox trong .env.local (VNPAY_TMN_CODE, VNPAY_HASH_SECRET).'} Quý khách có thể chọn Quét mã VietQR ở trên để thanh toán ngay.`
+            ? 'Cổng thanh toán trực tuyến VNPay tạm thời bảo trì. Quý khách vui lòng chọn Quét mã VietQR ở trên để thanh toán ngay.'
             : json.message ||
-              'Không thể khởi tạo phiên thanh toán VNPay Sandbox. Quý khách có thể dùng Quét mã VietQR ở trên.';
+              'Không thể khởi tạo phiên thanh toán VNPay. Quý khách có thể dùng Quét mã VietQR ở trên.';
         setInlineError(msg);
         if (response.status === 409) {
           showToast(msg, 'error');
@@ -359,7 +359,7 @@ function DepositPaymentModalContent({
       closingHandledRef.current = true;
       window.location.href = json.data.paymentUrl;
     } catch {
-      const errText = 'Mất kết nối khi khởi tạo cổng thanh toán VNPay Sandbox. Vui lòng thử lại.';
+      const errText = 'Mất kết nối khi khởi tạo cổng thanh toán VNPay. Vui lòng thử lại.';
       setInlineError(errText);
       showToast(errText, 'error');
       setIsProcessing(false);
@@ -491,7 +491,7 @@ function DepositPaymentModalContent({
                             ? 'Phòng VIP / Bàn lớn (300.000đ + 50% thực đơn)'
                             : preOrderTotal > 0
                               ? 'Bàn tiêu chuẩn (100.000đ + 50% thực đơn)'
-                              : 'Bàn tiêu chuẩn (BR-RES-07)'}
+                              : 'Bàn tiêu chuẩn (cọc 100.000đ)'}
                         </p>
                       </div>
                       <span className="font-serif font-bold text-xl text-[#D97706] shrink-0">
@@ -650,12 +650,12 @@ function DepositPaymentModalContent({
                 <path d="M7 11V7a5 5 0 0 1 10 0v4" />
               </svg>
               <span>
-                Giao dịch được thực hiện trực tiếp qua cổng bảo mật VNPay Sandbox (Thẻ ATM, VNPay QR, Visa / Mastercard). SmaRes không lưu trữ số thẻ, mã CVV hay mật khẩu ngân hàng của quý khách.
+                Giao dịch được thực hiện trực tiếp qua cổng bảo mật VNPay (Thẻ ATM, VNPay QR, Visa / Mastercard). SmaRes không lưu trữ số thẻ, mã CVV hay mật khẩu ngân hàng của quý khách.
               </span>
             </p>
           )}
 
-          {/* Thông báo lỗi nghiệp vụ / lock conflict / thiếu cấu hình Sandbox */}
+          {/* Thông báo lỗi nghiệp vụ / giữ chỗ */}
           {inlineError && (
             <div className="p-3.5 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-800 flex items-start gap-2.5">
               <svg className="w-4 h-4 text-red-600 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -680,7 +680,7 @@ function DepositPaymentModalContent({
               <span>
                 {selectedMethod === 'BANK_QR'
                   ? 'Đang ghi nhận giao dịch cọc...'
-                  : 'Đang khởi tạo cổng VNPay Sandbox...'}
+                  : 'Đang chuyển tới cổng thanh toán VNPay...'}
               </span>
             ) : selectedMethod === 'BANK_QR' ? (
               <>
@@ -691,7 +691,7 @@ function DepositPaymentModalContent({
               </>
             ) : (
               <>
-                <span>Thanh Toán Cọc {formatMoney(depositAmount)} Qua VNPay Sandbox</span>
+                <span>Thanh Toán Cọc {formatMoney(depositAmount)} Qua VNPay</span>
                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true">
                   <path d="M5 12h14" />
                   <path d="m12 5 7 7-7 7" />

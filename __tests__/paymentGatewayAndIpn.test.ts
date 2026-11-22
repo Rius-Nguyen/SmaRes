@@ -901,4 +901,59 @@ describe('TK-126 & TK-127: Deposit Calc, VNPay/MoMo Sandbox, IPN & Status', () =
     expect(badRes.status).toBe(400);
     expect(badBody.data.signatureValid).toBe(false);
   });
+
+  it('POST /api/transactions rejects isPreOrderOnly dishes when booking lead time is under 5 hours', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-22T07:00:00.000Z')); // 14:00 GMT+7
+
+    try {
+      mocks.reservationFindById.mockResolvedValue({
+        _id: RESERVATION_ID,
+        tableId: '507f1f77bcf86cd799439021',
+        tableNumber: 'B04',
+        date: '2026-11-22',
+        time: '18:00', // 4 hours ahead (< 5h)
+        guests: 4,
+        phone: '0901234567',
+        customerName: 'Nguyen Van A',
+        status: 'PENDING',
+        depositAmount: 0,
+        save: vi.fn().mockResolvedValue(undefined),
+      });
+      mockSelectLean(mocks.tableFindById, {
+        _id: '507f1f77bcf86cd799439021',
+        tableNumber: 'B04',
+        zoneName: 'Khu Trung Tâm',
+        capacity: 4,
+      });
+      mockSelectLean(mocks.menuItemFind, [
+        { _id: MENU_ITEM_ID, price: 380_000, isPreOrderOnly: true },
+      ]);
+
+      const req = new NextRequest('http://localhost:3000/api/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reservationId: RESERVATION_ID,
+          provider: 'BANK_QR',
+          preOrderItems: [{ menuItemId: MENU_ITEM_ID, quantity: 1 }],
+        }),
+      });
+
+      const res = await transactionsPost(req);
+      const body = (await res.json()) as {
+        success: boolean;
+        error?: string;
+        message?: string;
+      };
+
+      expect(res.status).toBe(400);
+      expect(body.success).toBe(false);
+      expect(body.error).toBe('SPECIAL_PREORDER_LEAD_TIME_TOO_SHORT');
+      expect(body.message).toContain('5 tiếng');
+      expect(mocks.transactionCreate).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

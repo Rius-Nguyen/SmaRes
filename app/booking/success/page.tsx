@@ -343,7 +343,7 @@ function BookingSuccessContent() {
           </div>
         </div>
 
-        {/* Đồng hồ đếm ngược tới giờ nhận bàn / giữ chỗ 15 phút (BR-RES-09) */}
+        {/* Đồng hồ đếm ngược tới giờ nhận bàn / giữ chỗ 15 phút */}
         {diningWindow && (
           <div className="mb-5">
             {nowMs < diningWindow.startMs ? (
@@ -351,7 +351,7 @@ function BookingSuccessContent() {
                 <div className="text-xs text-[#14532d]">
                   <p className="font-bold">Đếm ngược tới giờ nhận bàn</p>
                   <p className="text-[11px] opacity-85">
-                    Giữ chỗ tối đa 15 phút sau giờ hẹn (BR-RES-09)
+                    Giữ chỗ tối đa 15 phút sau giờ hẹn
                   </p>
                 </div>
                 <span className="font-mono font-bold text-sm sm:text-base text-[#14532d] bg-white px-3 py-1 rounded-xl border border-[#86efac] shrink-0">
@@ -361,7 +361,7 @@ function BookingSuccessContent() {
             ) : nowMs <= diningWindow.graceEndMs ? (
               <div className="rounded-2xl bg-[#fffbeb] border border-[#fde68a] px-4 py-3 flex items-center justify-between gap-3 text-left">
                 <div className="text-xs text-[#92400e]">
-                  <p className="font-bold">Đang trong thời gian giữ chỗ 15 phút (BR-RES-09)</p>
+                  <p className="font-bold">Đang trong thời gian giữ chỗ 15 phút</p>
                   <p className="text-[11px] opacity-85">
                     Vui lòng đến quầy lễ tân check-in trước khi hết giờ
                   </p>

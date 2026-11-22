@@ -111,7 +111,7 @@ export function renderReservationConfirmationEmail(
                 </a>
               </div>
               <p style="margin:0; font-size:13px; line-height:1.6; color:#78716C;">
-                Lưu ý: Nhà hàng giữ bàn tối đa 15 phút so với giờ hẹn (BR-RES-09). Hân hạnh được phục vụ quý khách!
+                Lưu ý: Nhà hàng giữ bàn tối đa 15 phút so với giờ hẹn. Hân hạnh được phục vụ quý khách!
               </p>
             </td>
           </tr>

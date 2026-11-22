@@ -19,7 +19,10 @@ import {
 import { useCart } from '@/app/context/CartContext';
 import { useToast } from '@/components/ui/Toast';
 import { formatMoney } from '@/app/lib/format';
-import { evaluateLateNightDiningNotice } from '@/app/lib/reservationHelpers';
+import {
+  evaluateLateNightDiningNotice,
+  isSlotEligibleForSpecialPreOrder,
+} from '@/app/lib/reservationHelpers';
 import {
   calculateDepositAmount,
   type DepositTier,
@@ -234,6 +237,19 @@ export default function BookingConfirmPage() {
       return;
     }
 
+    const hasSpecialInCart = cart.some((item) => item.isPreOrderOnly === true);
+    if (
+      hasSpecialInCart &&
+      !isSlotEligibleForSpecialPreOrder(bookingInfo.date, bookingInfo.time)
+    ) {
+      const msg =
+        'Các món đặc quyền chế biến công phu chỉ phục vụ khi đặt bàn trước giờ hẹn tối thiểu 5 tiếng. Vui lòng cập nhật lại thực đơn trước khi thanh toán.';
+      setErrorActionTarget('menu');
+      setErrorMsg(msg);
+      showToast(msg, 'warning');
+      return;
+    }
+
     setIsSubmitting(true);
     setErrorMsg('');
     setErrorActionTarget(null);
@@ -372,6 +388,9 @@ export default function BookingConfirmPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            reservationId: reservationSnapshot.reservationId,
+            bookingDate: reservationSnapshot.date,
+            bookingTime: reservationSnapshot.time,
             tableNumber: reservationSnapshot.tableNumber,
             tableId: reservationSnapshot.tableId || undefined,
             phone: reservationSnapshot.phone,
@@ -869,7 +888,7 @@ export default function BookingConfirmPage() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#e2e8e4]">
               <div>
                 <span className="text-[11px] font-bold uppercase tracking-wider text-[#92400e] bg-[#fffbeb] px-2.5 py-1 rounded-full border border-[#fde68a] inline-block mb-1">
-                  Quy định đặt cọc (BR-RES-07)
+                  Chính sách đặt cọc
                 </span>
                 <h2 className="font-serif font-bold text-xl text-[#155e42]">
                   3. Tiền Cọc Giữ Chỗ Trực Tuyến
@@ -917,7 +936,7 @@ export default function BookingConfirmPage() {
             <div className="bg-[#f0fdf4] rounded-xl border border-[#bbf7d0] p-4 text-xs sm:text-sm text-[#155e42] space-y-1.5">
               <ul className="list-disc pl-5 space-y-1.5 text-stone-600 leading-relaxed">
                 <li>
-                  Mức cọc áp dụng (BR-RES-07):{' '}
+                  Mức cọc áp dụng:{' '}
                   <strong className="text-[#155e42]">
                     100.000đ (Bàn tiêu chuẩn) / 300.000đ (VIP &amp; Bàn lớn) + 50% tổng tiền thực đơn đặt trước
                   </strong>

@@ -10,7 +10,9 @@ import {
   filterDishesBySemanticIntent,
   type SemanticDishResult,
 } from '@/app/lib/semanticMenuSearch';
+import { isSlotEligibleForSpecialPreOrder } from '@/app/lib/reservationHelpers';
 import DishCard from '@/components/menu/DishCard';
+import DishDetailModal from '@/components/menu/DishDetailModal';
 import TableSessionHeader, { type TableSessionStatus } from '@/components/menu/TableSessionHeader';
 import CustomizationModal from '@/components/menu/CustomizationModal';
 import CallWaiterModal from '@/components/menu/CallWaiterModal';
@@ -214,8 +216,16 @@ function TableMenuContent() {
 
   const [menuList, setMenuList] = useState<MenuItemData[]>(INITIAL_MENU_ITEMS);
   const [specialDishModal, setSpecialDishModal] = useState<MenuItemData | null>(null);
+  const [detailDish, setDetailDish] = useState<MenuItemData | null>(null);
   const [customizingDish, setCustomizingDish] = useState<MenuItemData | null>(null);
   const [isCallWaiterOpen, setIsCallWaiterOpen] = useState<boolean>(false);
+
+  const canOrderSpecialDishes = Boolean(
+    hasActiveBooking &&
+      bookingInfo?.date &&
+      bookingInfo?.time &&
+      isSlotEligibleForSpecialPreOrder(bookingInfo.date, bookingInfo.time)
+  );
 
   useEffect(() => {
     let isCancelled = false;
@@ -281,7 +291,7 @@ function TableMenuContent() {
       showToast('Bàn ăn hiện chưa mở phiên phục vụ. Quý khách vui lòng check-in trước.', 'warning');
       return;
     }
-    if (dish.isPreOrderOnly && !hasActiveBooking) {
+    if (dish.isPreOrderOnly && !canOrderSpecialDishes) {
       setSpecialDishModal(dish);
       return;
     }
@@ -327,7 +337,7 @@ function TableMenuContent() {
       showToast('Bàn ăn hiện chưa mở phiên phục vụ.', 'warning');
       return;
     }
-    if (dish.isPreOrderOnly && !hasActiveBooking) {
+    if (dish.isPreOrderOnly && !canOrderSpecialDishes) {
       setSpecialDishModal(dish);
       return;
     }
@@ -855,8 +865,9 @@ function TableMenuContent() {
                   isSoldOut={dish.isAvailable === false}
                   onAddToCart={handleDirectAddToCart}
                   onCustomize={handleOpenCustomize}
+                  onViewDetail={setDetailDish}
                   cartQuantity={cartQuantity}
-                  hasActiveBooking={hasActiveBooking}
+                  hasActiveBooking={canOrderSpecialDishes}
                 />
               );
             })}
@@ -904,6 +915,27 @@ function TableMenuContent() {
         onConfirm={handleCustomizationConfirm}
       />
 
+      {/* Modal Chi tiết món ăn */}
+      <DishDetailModal
+        dish={detailDish}
+        onClose={() => setDetailDish(null)}
+        cartQuantity={
+          detailDish
+            ? cart
+                .filter((i) => i._id === detailDish._id)
+                .reduce((sum, i) => sum + i.quantity, 0)
+            : 0
+        }
+        hasActiveBooking={canOrderSpecialDishes}
+        specialLockedReason={
+          hasActiveBooking && !canOrderSpecialDishes
+            ? 'Món đặc quyền chỉ áp dụng khi đặt bàn trước giờ hẹn tối thiểu 5 tiếng.'
+            : undefined
+        }
+        onAddToCart={handleDirectAddToCart}
+        onCustomize={handleOpenCustomize}
+      />
+
       {/* Modal Gọi phục vụ tại bàn */}
       <CallWaiterModal
         isOpen={isCallWaiterOpen}
@@ -915,6 +947,7 @@ function TableMenuContent() {
       <SpecialDishModal
         dish={specialDishModal}
         onClose={() => setSpecialDishModal(null)}
+        lockReason={hasActiveBooking && !canOrderSpecialDishes ? 'SHORT_LEAD_TIME' : 'NO_BOOKING'}
       />
     </main>
   );

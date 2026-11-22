@@ -7,6 +7,7 @@ import {
   DINING_DURATION_MINUTES,
   RESERVATION_HOLD_GRACE_MINUTES,
   SLOT_BLOCK_DURATION_MINUTES,
+  SPECIAL_PREORDER_MIN_ADVANCE_MINUTES,
   TableCleaningType,
   VIETNAM_DATE_REGEX,
   VIETNAM_TIME_REGEX,
@@ -22,6 +23,7 @@ import {
   findDueConfirmedReservationForAutoHold,
   getOperatingHoursForDate,
   isSlotBeforeMinAdvance,
+  isSlotEligibleForSpecialPreOrder,
   isVietnamSlotInPast,
   isWithinOperatingHoursForDate,
   parseTimeToMinutes,
@@ -965,5 +967,26 @@ describe('Reservations API route handlers', () => {
     expect(staffCancelRes.status).toBe(200);
     expect(staffDoc.status).toBe('CANCELLED');
     expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it('isSlotEligibleForSpecialPreOrder enforces >= 5 hours advance booking window', () => {
+    expect(SPECIAL_PREORDER_MIN_ADVANCE_MINUTES).toBe(300);
+
+    // 14:00 GMT+7 on 2026-11-22 == 07:00 UTC
+    const now1400Vn = Date.parse('2026-11-22T07:00:00.000Z');
+
+    // Exactly 5 hours (19:00 same day) -> eligible
+    expect(isSlotEligibleForSpecialPreOrder('2026-11-22', '19:00', now1400Vn)).toBe(true);
+    // More than 5 hours (19:15 same day, 11:00 next day) -> eligible
+    expect(isSlotEligibleForSpecialPreOrder('2026-11-22', '19:15', now1400Vn)).toBe(true);
+    expect(isSlotEligibleForSpecialPreOrder('2026-11-23', '11:00', now1400Vn)).toBe(true);
+
+    // Under 5 hours (18:45 = 4h45m, 16:00 = 2h, exact 1ms below 5h) -> rejected
+    expect(isSlotEligibleForSpecialPreOrder('2026-11-22', '18:45', now1400Vn)).toBe(false);
+    expect(isSlotEligibleForSpecialPreOrder('2026-11-22', '16:00', now1400Vn)).toBe(false);
+    expect(isSlotEligibleForSpecialPreOrder('2026-11-22', '19:00', now1400Vn + 1)).toBe(false);
+
+    // Invalid date/time -> false
+    expect(isSlotEligibleForSpecialPreOrder('invalid', '19:00', now1400Vn)).toBe(false);
   });
 });

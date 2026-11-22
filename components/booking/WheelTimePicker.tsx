@@ -417,7 +417,7 @@ export default function WheelTimePicker({
       )}
 
       <p className="text-[11px] text-stone-500 leading-relaxed">
-        Cuộn hoặc chạm để chọn giờ (bước 15 phút, đặt trước tối thiểu 30 phút theo BR-RES-13). Thời gian dùng bữa tối đa 150 phút + 30 phút dọn bàn (tổng khung giữ lịch 3 giờ).
+        Cuộn hoặc chạm để chọn giờ (bước 15 phút, đặt trước tối thiểu 30 phút). Thời gian dùng bữa tối đa 150 phút + 30 phút dọn bàn (tổng khung giữ lịch 3 giờ).
       </p>
 
       {availableSlots.length > 0 && lateNotice.severity !== 'NONE' && (

@@ -85,7 +85,7 @@ async function fetchLatestBookingAndSendTest(): Promise<{
           : json.reservations || json.bookings || json.data || [];
         if (Array.isArray(list) && list.length > 0) {
           latest = list[0];
-          sourceLabel = `Đồng bộ trực tiếp từ MongoDB (${url})`;
+          sourceLabel = `Đồng bộ trực tiếp từ hệ thống (${url})`;
           break;
         }
       }

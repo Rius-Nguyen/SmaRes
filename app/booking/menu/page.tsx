@@ -10,11 +10,15 @@ import {
   releaseClientTableLock,
   type ClientTableLockState,
 } from '@/app/lib/bookingLockClient';
-import { evaluateLateNightDiningNotice } from '@/app/lib/reservationHelpers';
+import {
+  evaluateLateNightDiningNotice,
+  isSlotEligibleForSpecialPreOrder,
+} from '@/app/lib/reservationHelpers';
 import { useCart, type CartItem } from '@/app/context/CartContext';
 import { formatMoney } from '@/app/lib/format';
 import { INITIAL_MENU_ITEMS, MenuItemData } from '@/app/lib/menuInitialData';
 import DishCard from '@/components/menu/DishCard';
+import DishDetailModal from '@/components/menu/DishDetailModal';
 import SpecialDishModal from '@/components/menu/SpecialDishModal';
 import { useToast } from '@/components/ui/Toast';
 
@@ -45,14 +49,47 @@ export default function BookingMenuPage() {
   const [menuDishes, setMenuDishes] = useState<MenuItemData[]>(INITIAL_MENU_ITEMS);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [specialDishModal, setSpecialDishModal] = useState<MenuItemData | null>(null);
+  const [detailDish, setDetailDish] = useState<MenuItemData | null>(null);
 
   const bookingDate = bookingInfo?.date ?? '';
   const bookingTime = bookingInfo?.time ?? '';
+  const canOrderSpecialDishes = useMemo(() => {
+    if (!hasActiveBooking || !bookingDate || !bookingTime) return false;
+    return isSlotEligibleForSpecialPreOrder(bookingDate, bookingTime);
+  }, [hasActiveBooking, bookingDate, bookingTime]);
+
+  const effectiveTab =
+    !canOrderSpecialDishes && activeTab === 'Món đặc biệt' ? 'Tất cả' : activeTab;
+
   const lateNotice = useMemo(() => {
     if (!bookingDate || !bookingTime) return null;
     const notice = evaluateLateNightDiningNotice(bookingDate, bookingTime);
     return notice.severity !== 'NONE' ? notice : null;
   }, [bookingDate, bookingTime]);
+
+  useEffect(() => {
+    if (!isLoaded || !hasActiveBooking || canOrderSpecialDishes || !hasSpecialItems) {
+      return;
+    }
+    const specialItems = getSpecialItems();
+    if (specialItems.length === 0) return;
+
+    for (const item of specialItems) {
+      removeFromCart(item.cartKey || item._id);
+    }
+    showToast(
+      'Lịch hẹn dưới 5 tiếng không áp dụng Món Đặc Quyền, thực đơn đặt trước đã được tự động cập nhật.',
+      'info'
+    );
+  }, [
+    isLoaded,
+    hasActiveBooking,
+    canOrderSpecialDishes,
+    hasSpecialItems,
+    getSpecialItems,
+    removeFromCart,
+    showToast,
+  ]);
 
   const handleLockEnd = useCallback(
     async (lock: ClientTableLockState, reason: 'USER_CANCELLED' | 'EXPIRED') => {
@@ -110,15 +147,18 @@ export default function BookingMenuPage() {
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const filteredDishes = menuDishes.filter((dish) => {
+    if (!canOrderSpecialDishes && dish.isPreOrderOnly) {
+      return false;
+    }
     if (normalizedQuery !== '') {
       return (
         dish.name.toLowerCase().includes(normalizedQuery) ||
         dish.description.toLowerCase().includes(normalizedQuery)
       );
     }
-    if (activeTab === 'Món đặc biệt') return Boolean(dish.isPreOrderOnly);
-    if (activeTab === 'Tất cả') return true;
-    return dish.category === activeTab;
+    if (effectiveTab === 'Món đặc biệt') return Boolean(dish.isPreOrderOnly);
+    if (effectiveTab === 'Tất cả') return true;
+    return dish.category === effectiveTab;
   });
 
   const getItemQuantityInCart = (dishId: string): number => {
@@ -133,7 +173,7 @@ export default function BookingMenuPage() {
       return;
     }
 
-    if (dish.isPreOrderOnly && !hasActiveBooking) {
+    if (dish.isPreOrderOnly && !canOrderSpecialDishes) {
       setSpecialDishModal(dish);
       return;
     }
@@ -224,7 +264,7 @@ export default function BookingMenuPage() {
 
       {/* Banner tóm tắt bàn đã chọn */}
       <div className="bg-white/95 backdrop-blur-md border-b border-[#ebe7df] shadow-xs py-4 px-4 sm:px-6 sticky top-16 z-30">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
           <div>
             <div className="flex items-center gap-2 flex-wrap text-xs sm:text-sm">
               <span className="font-semibold uppercase tracking-wider bg-[#f0fdf4] text-[#14532d] px-3 py-1 rounded-lg border border-[#bbf7d0]">
@@ -241,26 +281,12 @@ export default function BookingMenuPage() {
               3. Chọn Món Ăn Vào Giỏ Hàng (Tùy chọn)
             </h1>
           </div>
-
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            <button
-              type="button"
-              onClick={handleProceedToConfirm}
-              className="w-full sm:w-auto text-xs sm:text-sm font-semibold bg-[#14532d] hover:bg-[#15803d] text-white px-6 py-3 rounded-xl shadow-[0_8px_20px_-4px_rgba(20,83,45,0.4)] transition-all flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer"
-            >
-              <span>Xác nhận thực đơn ({totalItems} món)</span>
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M5 12h14" />
-                <path d="m12 5 7 7-7 7" />
-              </svg>
-            </button>
-          </div>
         </div>
       </div>
 
       {/* Thanh đếm ngược giữ khóa bàn đồng bộ từ Bước 2 */}
       {activeLock && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-5 w-full">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 w-full">
           <LockCountdownBanner
             lock={activeLock}
             isReleasing={isReleasingLock}
@@ -270,12 +296,12 @@ export default function BookingMenuPage() {
         </div>
       )}
 
-      {/* Ý tưởng 3: Gợi ý đặt món trước cho khung giờ muộn */}
+      {/* Gợi ý đặt món trước cho khung giờ muộn */}
       {lateNotice && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 w-full">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-3 w-full">
           <div
             role="note"
-            className={`rounded-2xl border px-4 py-3.5 flex items-start gap-3 text-xs sm:text-sm ${
+            className={`rounded-2xl border px-4 py-3 flex items-start gap-3 text-xs sm:text-sm ${
               lateNotice.severity === 'LAST_CALL'
                 ? 'bg-[#FFF7ED] border-[#FDBA74] text-[#9A3412]'
                 : 'bg-[#FFFBEB] border-[#FDE68A] text-[#92400E]'
@@ -300,81 +326,103 @@ export default function BookingMenuPage() {
                 {lateNotice.closingTimeLabel}) — Còn {lateNotice.remainingMinutes} phút phục vụ
               </p>
               <p className="mt-0.5 leading-relaxed opacity-95">
-                Bếp nhận gọi món lượt cuối trước khi đóng cửa 30 phút. Khuyến khích quý khách chọn món trước ngay tại đây để bếp chuẩn bị sẵn và lên món tức thì khi bạn ngồi vào bàn!
+                Bếp nhận gọi món lượt cuối trước khi đóng cửa 30 phút. Khuyến khích chọn món trước để bếp chuẩn bị sẵn khi bạn đến bàn.
               </p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Ghi chú đặc quyền đặt trước */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
-        <div className="bg-gradient-to-r from-[#fffbeb] via-[#fef3c7]/60 to-[#f0fdf4] rounded-3xl p-6 md:p-8 border border-[#fde68a] shadow-xs">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-            <div className="flex items-start gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-[#d97706] text-white flex items-center justify-center shrink-0 shadow-sm border border-[#fbbf24]/40">
-                <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      {/* Dải thông báo gọn điều kiện Món Đặc Quyền */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-3 w-full">
+        {canOrderSpecialDishes ? (
+          <div className="bg-gradient-to-r from-[#fffbeb] via-[#fef3c7]/70 to-[#f0fdf4] rounded-2xl px-4 py-3 border border-[#fde68a] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 text-xs sm:text-sm text-[#92400e]">
+              <span className="w-7 h-7 rounded-lg bg-[#d97706] text-white flex items-center justify-center shrink-0">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14" />
                 </svg>
-              </div>
-              <div className="space-y-2">
-                <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#92400e] tracking-tight">
-                  Đã mở khóa các Món Ăn Đặc Quyền dành riêng cho khách Đặt bàn trước!
-                </h2>
-                <p className="text-sm sm:text-base text-stone-700 leading-relaxed font-normal">
-                  Những món ăn chế biến công phu (Phở Wagyu A5, Vịt quay mật ong rừng,...) chỉ có thể gọi khi đặt trước.
-                </p>
-                <div className="bg-white/95 rounded-2xl p-4 border border-[#bbf7d0] shadow-xs mt-3">
-                  <div className="flex items-start gap-3">
-                    <span className="text-[#15803d] shrink-0 mt-0.5">
-                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="12" cy="12" r="10" />
-                        <line x1="12" y1="16" x2="12" y2="12" />
-                        <line x1="12" y1="8" x2="12.01" y2="8" />
-                      </svg>
-                    </span>
-                    <div className="text-xs sm:text-sm text-stone-800 leading-relaxed">
-                      <span className="font-bold text-[#14532d] uppercase tracking-wide mr-2">
-                        Lưu ý quan trọng:
-                      </span>
-                      <span>
-                        Bước đặt món là <strong>TÙY CHỌN (Không bắt buộc)</strong> — Quý khách có thể chọn món ngay hoặc bấm nút <strong>&ldquo;Bỏ qua chọn món&rdquo;</strong> để đến nhà hàng mới gọi món!
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              </span>
+              <span>
+                <strong>Đã mở khóa Món Đặc Quyền đặt trước</strong> — Chọn món ngay hoặc bấm <em>Bỏ qua</em> để gọi khi tới nhà hàng.
+              </span>
             </div>
 
             <button
               type="button"
-              onClick={() => setActiveTab('Món đặc biệt')}
-              className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-[#92400e] bg-[#fef3c7] hover:bg-[#fde68a] px-5 py-3 rounded-xl whitespace-nowrap border border-[#fcd34d] shrink-0 shadow-xs transition-all cursor-pointer"
+              onClick={() => {
+                setActiveTab('Món đặc biệt');
+                setSearchQuery('');
+              }}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#92400e] bg-[#fef3c7] hover:bg-[#fde68a] px-3.5 py-2 rounded-xl whitespace-nowrap border border-[#fcd34d] shrink-0 transition-colors cursor-pointer self-start sm:self-auto"
             >
-              <span>Xem ngay món đặc biệt</span>
-              <svg className="w-4 h-4 text-[#d97706]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <span>Xem món đặc biệt</span>
+              <svg className="w-3.5 h-3.5 text-[#d97706]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
               </svg>
             </button>
           </div>
-        </div>
+        ) : (
+          <div className="bg-[#faf8f5] rounded-2xl px-4 py-2.5 border border-[#ebe7df] flex items-center gap-2.5 text-xs sm:text-sm text-[#57534e]">
+            <svg className="w-4 h-4 text-[#d97706] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="16" x2="12" y2="12" />
+              <line x1="12" y1="8" x2="12.01" y2="8" />
+            </svg>
+            <span>
+              Các món chế biến công phu cần đặt trước tối thiểu <strong>5 tiếng</strong>, nên chưa áp dụng cho lịch đặt sát giờ này. Quý khách có thể chọn các món bên dưới hoặc bấm <em>Bỏ qua</em>.
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Nội dung chính: Danh mục + Danh sách món + Giỏ hàng mini */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 grid grid-cols-1 lg:grid-cols-12 gap-8 w-full">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 grid grid-cols-1 lg:grid-cols-12 gap-8 w-full">
         {/* Cột trái (8/12 cột) */}
         <div className="lg:col-span-8">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 pb-4 border-b border-[#ebe7df] mb-6">
-            <div className="flex items-center space-x-2 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <div className="space-y-3 pb-4 border-b border-[#ebe7df] mb-6">
+            {/* Thanh tìm kiếm tách riêng để dải danh mục đủ chỗ hiển thị trọn vẹn */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="relative w-full sm:max-w-sm">
+                <input
+                  type="text"
+                  placeholder="Tìm món ăn..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-4 pr-10 py-2.5 border border-[#d6d0c4] rounded-full text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#14532d] bg-white shadow-xs"
+                />
+                <svg
+                  className="w-4 h-4 absolute right-3.5 top-3 text-stone-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+              </div>
+              <span className="text-xs text-stone-500 font-medium">
+                Hiển thị {filteredDishes.length} món phù hợp
+              </span>
+            </div>
+
+            {/* Dải phân loại món ăn: hiển thị đủ & xuống dòng gọn trên PC, vuốt ngang mượt trên mobile */}
+            <div className="flex items-center gap-2 overflow-x-auto sm:flex-wrap sm:overflow-visible pb-1.5 sm:pb-0">
               {[
                 { id: 'Tất cả', label: 'Tất cả món' },
-                { id: 'Món đặc biệt', label: 'Món Đặc Biệt Đặt Trước', isSpecial: true, badge: 'Mới' },
+                ...(canOrderSpecialDishes
+                  ? [{ id: 'Món đặc biệt', label: 'Món Đặc Biệt Đặt Trước', isSpecial: true, badge: 'Mới' }]
+                  : []),
                 { id: 'Khai vị', label: 'Khai vị' },
                 { id: 'Món chính', label: 'Món chính' },
                 { id: 'Tráng miệng', label: 'Tráng miệng' },
                 { id: 'Đồ uống', label: 'Đồ uống & Rượu' },
               ].map((tab) => {
-                const isActive = activeTab === tab.id;
+                const isActive = effectiveTab === tab.id;
                 return (
                   <button
                     key={tab.id}
@@ -383,7 +431,7 @@ export default function BookingMenuPage() {
                       setActiveTab(tab.id);
                       setSearchQuery('');
                     }}
-                    className={`interactive-btn px-4 py-2.5 rounded-full text-xs sm:text-sm font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
+                    className={`interactive-btn px-4 py-2 rounded-full text-xs sm:text-sm font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
                       isActive
                         ? tab.isSpecial
                           ? 'bg-[#d97706] text-white shadow-md ring-2 ring-[#fbbf24]'
@@ -408,29 +456,6 @@ export default function BookingMenuPage() {
                 );
               })}
             </div>
-
-            <div className="relative w-full sm:w-64 shrink-0">
-              <input
-                type="text"
-                placeholder="Tìm món ăn..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-4 pr-10 py-2.5 border border-[#d6d0c4] rounded-full text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#14532d] bg-white shadow-xs"
-              />
-              <svg
-                className="w-4 h-4 absolute right-3.5 top-3 text-stone-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
-            </div>
           </div>
 
           {filteredDishes.length === 0 ? (
@@ -454,12 +479,13 @@ export default function BookingMenuPage() {
                     variant="compact"
                     showCategoryBadge
                     cartQuantity={qtyInCart}
-                    hasActiveBooking={hasActiveBooking}
+                    hasActiveBooking={canOrderSpecialDishes}
                     isSoldOut={dish.isAvailable === false}
                     actionLabel="Thêm vào thực đơn"
                     onAddToCart={handleAddDish}
                     onIncrement={handleAddDish}
                     onDecrement={handleDecrementDish}
+                    onViewDetail={setDetailDish}
                   />
                 );
               })}
@@ -597,29 +623,31 @@ export default function BookingMenuPage() {
             </div>
 
             <div className="mt-6 space-y-3">
-              <button
-                type="button"
-                onClick={handleProceedToConfirm}
-                className="interactive-btn w-full bg-[#14532d] hover:bg-[#15803d] text-white font-bold py-3.5 px-4 rounded-xl text-sm shadow-md transition-all flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer"
-              >
-                <span>Xác nhận thực đơn &amp; Tiếp tục</span>
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M5 12h14" />
-                  <path d="m12 5 7 7-7 7" />
-                </svg>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleSkipDishes}
-                className="interactive-btn w-full bg-[#f5f2eb] hover:bg-[#ebe7df] text-[#1c1917] font-semibold py-3 px-4 rounded-xl text-sm transition-colors flex items-center justify-center gap-2 border border-[#d6d0c4] cursor-pointer"
-              >
-                <span>Bỏ qua chọn món (Gọi tại bàn)</span>
-                <svg className="w-4 h-4 text-stone-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polygon points="5 4 15 12 5 20 5 4" />
-                  <line x1="19" y1="5" x2="19" y2="19" />
-                </svg>
-              </button>
+              {totalItems === 0 ? (
+                <button
+                  type="button"
+                  onClick={handleSkipDishes}
+                  className="interactive-btn w-full bg-[#f5f2eb] hover:bg-[#ebe7df] text-[#1c1917] font-semibold py-3.5 px-4 rounded-xl text-sm transition-colors flex items-center justify-center gap-2 border border-[#d6d0c4] cursor-pointer"
+                >
+                  <span>Bỏ qua chọn món (Gọi tại bàn)</span>
+                  <svg className="w-4 h-4 text-stone-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polygon points="5 4 15 12 5 20 5 4" />
+                    <line x1="19" y1="5" x2="19" y2="19" />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleProceedToConfirm}
+                  className="interactive-btn w-full bg-[#14532d] hover:bg-[#15803d] text-white font-bold py-3.5 px-4 rounded-xl text-sm shadow-md transition-all flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer"
+                >
+                  <span>Xác nhận thực đơn ({totalItems} món) &amp; Tiếp tục</span>
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M5 12h14" />
+                    <path d="m12 5 7 7-7 7" />
+                  </svg>
+                </button>
+              )}
 
               {cart.length > 0 && (
                 <button
@@ -658,30 +686,45 @@ export default function BookingMenuPage() {
           <p className="text-sm font-bold text-[#14532d]">{formatMoney(totalPrice)}</p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleSkipDishes}
-            className="text-xs font-semibold px-3 py-2 border border-[#d6d0c4] rounded-lg text-stone-700 hover:bg-[#f5f2eb] cursor-pointer"
-          >
-            Bỏ qua
-          </button>
-          <button
-            type="button"
-            onClick={handleProceedToConfirm}
-            className="text-xs font-bold px-4 py-2 bg-[#14532d] text-white rounded-lg hover:bg-[#15803d] shadow cursor-pointer inline-flex items-center gap-1"
-          >
-            <span>Tiếp tục</span>
-            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M5 12h14" />
-              <path d="m12 5 7 7-7 7" />
-            </svg>
-          </button>
+          {totalItems === 0 ? (
+            <button
+              type="button"
+              onClick={handleSkipDishes}
+              className="text-xs font-semibold px-4 py-2.5 border border-[#d6d0c4] bg-[#f5f2eb] rounded-lg text-[#1c1917] hover:bg-[#ebe7df] cursor-pointer"
+            >
+              Bỏ qua chọn món (Gọi tại bàn)
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleProceedToConfirm}
+              className="text-xs font-bold px-4 py-2.5 bg-[#14532d] text-white rounded-lg hover:bg-[#15803d] shadow cursor-pointer inline-flex items-center gap-1"
+            >
+              <span>Xác nhận thực đơn ({totalItems} món)</span>
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M5 12h14" />
+                <path d="m12 5 7 7-7 7" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
+
+      <DishDetailModal
+        dish={detailDish}
+        onClose={() => setDetailDish(null)}
+        cartQuantity={detailDish ? getItemQuantityInCart(detailDish._id) : 0}
+        hasActiveBooking={canOrderSpecialDishes}
+        actionLabel="Thêm vào thực đơn"
+        onAddToCart={handleAddDish}
+        onIncrement={handleAddDish}
+        onDecrement={handleDecrementDish}
+      />
 
       <SpecialDishModal
         dish={specialDishModal}
         onClose={() => setSpecialDishModal(null)}
+        lockReason={hasActiveBooking && !canOrderSpecialDishes ? 'SHORT_LEAD_TIME' : 'NO_BOOKING'}
       />
     </main>
   );
