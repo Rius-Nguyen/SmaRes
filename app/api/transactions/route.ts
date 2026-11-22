@@ -12,9 +12,10 @@ import Order, { OrderStatus } from '@/app/models/Order';
 import {
   STANDARD_DEPOSIT_AMOUNT,
   calculateDepositAmount,
-  computeVerifiedPreOrderTotal,
+  inspectVerifiedPreOrder,
   parsePreOrderItems,
 } from '@/app/lib/payments/depositCalculator';
+import { isSlotEligibleForSpecialPreOrder } from '@/app/lib/reservationHelpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -217,7 +218,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 1b. Tính lại tổng tiền cọc phía Server theo BR-RES-07 (không tin amount do client gửi)
+    // 1b. Kiểm tra món đặc quyền (>= 5 tiếng) & tính lại tổng tiền cọc phía Server
     const table = reservation.tableId
       ? await Table.findById(reservation.tableId)
           .select('_id tableNumber capacity zoneName')
@@ -226,7 +227,24 @@ export async function POST(request: NextRequest) {
 
     let preOrderTotal = 0;
     if (preOrderItems.length > 0) {
-      preOrderTotal = await computeVerifiedPreOrderTotal(preOrderItems);
+      const preOrderAudit = await inspectVerifiedPreOrder(preOrderItems);
+      if (
+        preOrderAudit.hasSpecialItems &&
+        (!reservation.date ||
+          !reservation.time ||
+          !isSlotEligibleForSpecialPreOrder(reservation.date, reservation.time))
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              'Các món đặc quyền chế biến công phu chỉ áp dụng khi đặt bàn trước giờ hẹn tối thiểu 5 tiếng.',
+            error: 'SPECIAL_PREORDER_LEAD_TIME_TOO_SHORT',
+          },
+          { status: 400 }
+        );
+      }
+      preOrderTotal = preOrderAudit.verifiedTotal;
     } else if (reservation.phone) {
       const lookbackWindow = new Date(Date.now() - 30 * 60 * 1000);
       const pendingOrder = await Order.findOne({

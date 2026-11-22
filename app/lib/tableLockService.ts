@@ -285,7 +285,7 @@ export async function acquireTableLock(
   const sessionId = input.sessionId?.trim() || generateLockSessionId();
   const normalizedTableNumber = (input.tableNumber ?? '').trim().toUpperCase();
 
-  // BR-RES-13: Kiểm tra đặt bàn trước tối thiểu 30 phút (áp dụng cho lượt khóa mới chưa gắn đơn)
+  // Kiểm tra đặt bàn trước tối thiểu 30 phút (áp dụng cho lượt khóa mới chưa gắn đơn)
   if (
     !input.reservationId &&
     isSlotBeforeMinAdvance(input.date, input.time, now.getTime())
@@ -294,7 +294,7 @@ export async function acquireTableLock(
       acquired: false,
       conflictReason: 'BOOKING_LEAD_TIME_TOO_SHORT',
       lockedUntil: null,
-      message: 'Vui lòng đặt bàn trước giờ hẹn tối thiểu 30 phút (BR-RES-13).',
+      message: 'Vui lòng đặt bàn trước giờ hẹn tối thiểu 30 phút.',
     };
   }
 

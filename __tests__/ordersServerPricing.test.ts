@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   menuItemFindById: vi.fn(),
   tableFindById: vi.fn(),
   tableFindOne: vi.fn(),
+  reservationFindById: vi.fn(),
   orderFind: vi.fn(),
   orderFindById: vi.fn(),
   orderFindOne: vi.fn(),
@@ -27,6 +28,12 @@ vi.mock('@/app/models/Table', () => ({
   default: {
     findById: mocks.tableFindById,
     findOne: mocks.tableFindOne,
+  },
+}));
+
+vi.mock('@/app/models/Reservation', () => ({
+  default: {
+    findById: mocks.reservationFindById,
   },
 }));
 
@@ -338,5 +345,91 @@ describe('Orders API server-side pricing, availability, SSE & RBAC', () => {
     const adminRes = await PATCH(adminReq);
     expect(adminRes.status).toBe(200);
     expect(existingOrder.status).toBe('COMPLETED');
+  });
+
+  it('POST /api/orders enforces >= 5h advance booking lead time for isPreOrderOnly dishes', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-22T07:00:00.000Z')); // 14:00 GMT+7
+
+    try {
+      mockMenuLookup({
+        [PHO_ID]: {
+          _id: PHO_ID,
+          name: 'Phở Bò Wagyu A5 Thượng Hạng',
+          price: 380000,
+          isAvailable: true,
+          isPreOrderOnly: true,
+        },
+      });
+
+      const RESERVATION_ID = '6717a01a1e0011a100000301';
+
+      // 1. Booking 3 hours away (17:00) -> 400 SPECIAL_PREORDER_LEAD_TIME_TOO_SHORT
+      mocks.reservationFindById.mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({
+          lean: vi.fn().mockResolvedValue({ date: '2026-11-22', time: '17:00' }),
+        }),
+      });
+      const tooSoonRes = await POST(
+        new NextRequest('http://localhost/api/orders', {
+          method: 'POST',
+          body: JSON.stringify({
+            reservationId: RESERVATION_ID,
+            tableNumber: 'B04',
+            items: [{ menuItemId: PHO_ID, quantity: 1 }],
+          }),
+        })
+      );
+      const tooSoonBody = (await tooSoonRes.json()) as {
+        success: boolean;
+        error?: string;
+      };
+      expect(tooSoonRes.status).toBe(400);
+      expect(tooSoonBody.success).toBe(false);
+      expect(tooSoonBody.error).toBe('SPECIAL_PREORDER_LEAD_TIME_TOO_SHORT');
+      expect(mocks.orderCreate).not.toHaveBeenCalled();
+
+      // 2. No reservation lead time at all -> 400
+      const noBookingRes = await POST(
+        new NextRequest('http://localhost/api/orders', {
+          method: 'POST',
+          body: JSON.stringify({
+            tableNumber: 'B04',
+            items: [{ menuItemId: PHO_ID, quantity: 1 }],
+          }),
+        })
+      );
+      expect(noBookingRes.status).toBe(400);
+      expect(mocks.orderCreate).not.toHaveBeenCalled();
+
+      // 3. Booking >= 5 hours away (19:00) -> 201 Created
+      mocks.reservationFindById.mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({
+          lean: vi.fn().mockResolvedValue({ date: '2026-11-22', time: '19:00' }),
+        }),
+      });
+      mocks.orderCreate.mockResolvedValueOnce({
+        _id: ORDER_ID,
+        orderCode: 'ORD-SPECIAL-OK',
+        tableNumber: 'B04',
+        totalAmount: 380000,
+        status: 'PENDING',
+      });
+
+      const okRes = await POST(
+        new NextRequest('http://localhost/api/orders', {
+          method: 'POST',
+          body: JSON.stringify({
+            reservationId: RESERVATION_ID,
+            tableNumber: 'B04',
+            items: [{ menuItemId: PHO_ID, quantity: 1 }],
+          }),
+        })
+      );
+      expect(okRes.status).toBe(201);
+      expect(mocks.orderCreate).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -12,9 +12,10 @@ import {
 } from '@/app/lib/payments/config';
 import {
   calculateDepositAmount,
-  computeVerifiedPreOrderTotal,
+  inspectVerifiedPreOrder,
   parsePreOrderItems,
 } from '@/app/lib/payments/depositCalculator';
+import { isSlotEligibleForSpecialPreOrder } from '@/app/lib/reservationHelpers';
 import { createVnpayPaymentUrl } from '@/app/lib/payments/vnpay';
 import { createMomoPayment } from '@/app/lib/payments/momo';
 import Reservation, {
@@ -197,8 +198,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 2. Tính số tiền đặt cọc hoàn toàn phía Server theo BR-RES-07 (tuyệt đối không tin client)
-    const preOrderTotal = await computeVerifiedPreOrderTotal(preOrderItems);
+    // 2. Kiểm tra món đặc quyền (>= 5 tiếng) & tính số tiền đặt cọc hoàn toàn phía Server
+    const preOrderAudit = await inspectVerifiedPreOrder(preOrderItems);
+    if (
+      preOrderAudit.hasSpecialItems &&
+      (!reservation.date ||
+        !reservation.time ||
+        !isSlotEligibleForSpecialPreOrder(reservation.date, reservation.time))
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            'Các món đặc quyền chế biến công phu chỉ áp dụng khi đặt bàn trước giờ hẹn tối thiểu 5 tiếng.',
+          error: 'SPECIAL_PREORDER_LEAD_TIME_TOO_SHORT',
+        },
+        { status: 400 }
+      );
+    }
+
+    const preOrderTotal = preOrderAudit.verifiedTotal;
     const depositCalc = calculateDepositAmount({
       tableNumber: table.tableNumber || reservation.tableNumber,
       zoneName: table.zoneName,

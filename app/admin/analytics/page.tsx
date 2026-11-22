@@ -386,7 +386,7 @@ export default function AdminAnalyticsPage() {
                 </span>
               </div>
               <p className="text-[11px] text-[#57534E]">
-                Tổng hợp MongoDB Aggregation theo múi giờ Việt Nam (+07:00)
+                Tổng hợp dữ liệu thống kê theo múi giờ Việt Nam (+07:00)
                 {lastUpdatedLabel ? ` • Cập nhật ${lastUpdatedLabel}` : ''}
               </p>
             </div>

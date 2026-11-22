@@ -393,11 +393,11 @@ function PaymentResultContent() {
                 <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
               </svg>
               <p className="leading-relaxed">
-                <strong>Email xác nhận đặt bàn (BR-RES-05):</strong> Hệ thống đã kích hoạt gửi thư xác nhận kèm mã đặt bàn, số bàn và số tiền cọc tới email của quý khách trong tối đa 1 phút.
+                <strong>Email xác nhận đặt bàn:</strong> Hệ thống đã kích hoạt gửi thư xác nhận kèm mã đặt bàn, số bàn và số tiền cọc tới email của quý khách trong tối đa 1 phút.
               </p>
             </div>
 
-            {/* Nút điều hướng đặt món trước (BR-ORD-02) & xem phiếu / lịch sử */}
+            {/* Nút điều hướng đặt món trước & xem phiếu / lịch sử */}
             <div className="space-y-2.5 pt-1">
               <Link
                 href="/booking/menu"
@@ -408,7 +408,7 @@ function PaymentResultContent() {
                   <path d="M7 2v20" />
                   <path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7" />
                 </svg>
-                <span>Đặt Món Ăn Trước Ngay (BR-ORD-02)</span>
+                <span>Đặt Món Ăn Trước Ngay</span>
               </Link>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">

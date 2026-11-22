@@ -12,6 +12,7 @@ export interface DishCardProps {
   onCustomize?: (dish: MenuItemData) => void;
   onIncrement?: (dish: MenuItemData) => void;
   onDecrement?: (dish: MenuItemData) => void;
+  onViewDetail?: (dish: MenuItemData) => void;
   cartQuantity?: number;
   hasActiveBooking?: boolean;
   actionLabel?: string;
@@ -27,6 +28,7 @@ export default function DishCard({
   onCustomize,
   onIncrement,
   onDecrement,
+  onViewDetail,
   cartQuantity = 0,
   hasActiveBooking = false,
   actionLabel,
@@ -94,7 +96,12 @@ export default function DishCard({
       }`}
     >
       {/* Khung ảnh món ăn */}
-      <div className="relative aspect-[4/3] w-full overflow-hidden bg-stone-100">
+      <div
+        className={`relative aspect-[4/3] w-full overflow-hidden bg-stone-100 ${
+          onViewDetail ? 'cursor-pointer' : ''
+        }`}
+        onClick={() => onViewDetail?.(dish)}
+      >
         <Image
           src={imageSrc}
           alt={dish.name}
@@ -131,7 +138,7 @@ export default function DishCard({
         {dish.isPreOrderOnly ? (
           <div className="absolute top-3 left-3 z-20 bg-[#b45309]/95 text-white text-[11px] font-semibold px-2.5 py-1 rounded-full shadow-md flex items-center gap-1.5 backdrop-blur-xs border border-[#fbbf24]/40">
             <svg
-              className="w-3 h-3 text-[#fef3c7]"
+              className="w-3 h-3 text-[#fef3c7] shrink-0"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -151,11 +158,11 @@ export default function DishCard({
           )
         )}
 
-        {/* Badge số lượng đã chọn trong giỏ */}
+        {/* Badge số lượng đã chọn trong giỏ — đặt góc dưới bên phải để không đè nhãn góc trên */}
         {cartQuantity > 0 && (
           <div
             key={cartQuantity}
-            className="animate-cart-pop absolute top-3 right-3 z-20 bg-[#155e42] text-white text-xs font-semibold px-2.5 py-1 rounded-full shadow-md flex items-center gap-1 border border-emerald-400/30"
+            className="animate-cart-pop absolute bottom-3 right-3 z-20 bg-[#155e42]/95 text-white text-xs font-semibold px-2.5 py-1 rounded-full shadow-lg flex items-center gap-1 border border-white/80 backdrop-blur-xs"
           >
             <svg
               className="w-3 h-3 text-emerald-200"
@@ -174,12 +181,30 @@ export default function DishCard({
       {/* Nội dung thông tin món ăn */}
       <div className={`${isCompact ? 'p-4' : 'p-5'} flex-1 flex flex-col justify-between`}>
         <div>
-          {/* Hàng tiêu đề và giá tiền */}
-          <div className="flex justify-between items-start gap-3 mb-1.5">
+          {/* Tên món chiếm trọn chiều rộng thẻ, giá tách riêng dòng dưới */}
+          {onViewDetail ? (
+            <button
+              type="button"
+              onClick={() => onViewDetail(dish)}
+              className="w-full text-left cursor-pointer"
+            >
+              <h3
+                className={`font-serif font-bold ${
+                  isCompact ? 'text-[15px] sm:text-base' : 'text-base md:text-lg'
+                } leading-snug transition-colors ${
+                  isSoldOut
+                    ? 'text-stone-500'
+                    : 'text-[#1c1917] group-hover:text-[#155e42]'
+                }`}
+              >
+                {dish.name}
+              </h3>
+            </button>
+          ) : (
             <h3
               className={`font-serif font-bold ${
-                isCompact ? 'text-base' : 'text-base md:text-lg'
-              } leading-snug transition-colors line-clamp-2 ${
+                isCompact ? 'text-[15px] sm:text-base' : 'text-base md:text-lg'
+              } leading-snug transition-colors ${
                 isSoldOut
                   ? 'text-stone-500'
                   : 'text-[#1c1917] group-hover:text-[#155e42]'
@@ -187,6 +212,9 @@ export default function DishCard({
             >
               {dish.name}
             </h3>
+          )}
+
+          <div className="mt-1 mb-2 flex items-center justify-between gap-2">
             <span
               className={`font-serif font-bold whitespace-nowrap text-base tracking-tight ${
                 isSoldOut ? 'text-stone-400 line-through' : 'text-[#d97706]'
@@ -194,6 +222,15 @@ export default function DishCard({
             >
               {formatMoney(dish.price)}
             </span>
+            {onViewDetail && (
+              <button
+                type="button"
+                onClick={() => onViewDetail(dish)}
+                className="text-[11px] font-semibold text-[#155e42] hover:text-[#0e3f2d] hover:underline shrink-0 cursor-pointer"
+              >
+                Xem chi tiết
+              </button>
+            )}
           </div>
 
           {/* Tag/Badge hiển thị lý do gợi ý tương đồng ngữ nghĩa */}
@@ -218,16 +255,21 @@ export default function DishCard({
             </div>
           )}
 
-          {/* Mô tả món ăn */}
-          <p className="text-stone-600 text-xs sm:text-sm line-clamp-2 leading-relaxed mb-3">
+          {/* Mô tả món ăn — giữ gọn tối đa 3 dòng, bấm để xem chi tiết đầy đủ */}
+          <p
+            onClick={onViewDetail ? () => onViewDetail(dish) : undefined}
+            className={`text-stone-600 text-xs sm:text-sm line-clamp-3 leading-relaxed mb-3 ${
+              onViewDetail ? 'cursor-pointer' : ''
+            }`}
+          >
             {dish.description}
           </p>
 
-          {/* Note chuẩn bị món */}
+          {/* Note chuẩn bị món — hiển thị đầy đủ câu, không cắt 1 dòng */}
           {dish.preparationNote && (
-            <div className="mb-4 text-[11px] text-[#92400e] bg-[#fffbeb] p-2 rounded-lg border border-[#fde68a] flex items-center gap-1.5 font-medium">
+            <div className="mb-4 text-[11px] text-[#92400e] bg-[#fffbeb] p-2.5 rounded-lg border border-[#fde68a] flex items-start gap-1.5 font-medium">
               <svg
-                className="w-3.5 h-3.5 text-[#d97706] shrink-0"
+                className="w-3.5 h-3.5 text-[#d97706] shrink-0 mt-0.5"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -238,7 +280,7 @@ export default function DishCard({
                 <circle cx="12" cy="12" r="10" />
                 <polyline points="12 6 12 12 16 14" />
               </svg>
-              <span className="line-clamp-1">{dish.preparationNote}</span>
+              <span className="leading-relaxed">{dish.preparationNote}</span>
             </div>
           )}
         </div>

@@ -39,15 +39,20 @@ export function parsePreOrderItems(raw: unknown): PreOrderItemInput[] {
   return items;
 }
 
+export interface VerifiedPreOrderSummary {
+  verifiedTotal: number;
+  hasSpecialItems: boolean;
+}
+
 /**
- * Tra cứu đơn giá gốc từ MongoDB MenuItem để tính tổng tiền món đặt trước phía Server.
+ * Tra cứu đơn giá gốc & cờ món đặc quyền từ MenuItem phía Server.
  * Tuyệt đối không tin giá tiền do Client gửi lên.
  */
-export async function computeVerifiedPreOrderTotal(
+export async function inspectVerifiedPreOrder(
   preOrderItems?: ReadonlyArray<PreOrderItemInput>
-): Promise<number> {
+): Promise<VerifiedPreOrderSummary> {
   if (!Array.isArray(preOrderItems) || preOrderItems.length === 0) {
-    return 0;
+    return { verifiedTotal: 0, hasSpecialItems: false };
   }
 
   const quantityById = new Map<string, number>();
@@ -61,7 +66,7 @@ export async function computeVerifiedPreOrderTotal(
   }
 
   if (quantityById.size === 0) {
-    return 0;
+    return { verifiedTotal: 0, hasSpecialItems: false };
   }
 
   const validIds = Array.from(quantityById.keys());
@@ -69,20 +74,41 @@ export async function computeVerifiedPreOrderTotal(
     _id: { $in: validIds },
     isAvailable: true,
   })
-    .select('_id price')
+    .select('_id price isPreOrderOnly')
     .lean();
 
   let verifiedTotal = 0;
+  let hasSpecialItems = false;
   for (const menuItem of menuItems) {
     const qty = quantityById.get(String(menuItem._id)) ?? 0;
+    if (qty <= 0) continue;
+
+    if ((menuItem as { isPreOrderOnly?: boolean }).isPreOrderOnly === true) {
+      hasSpecialItems = true;
+    }
+
     const unitPrice =
       typeof menuItem.price === 'number' && Number.isFinite(menuItem.price)
         ? menuItem.price
         : 0;
-    if (qty > 0 && unitPrice > 0) {
+    if (unitPrice > 0) {
       verifiedTotal += unitPrice * qty;
     }
   }
 
-  return Math.round(verifiedTotal);
+  return {
+    verifiedTotal: Math.round(verifiedTotal),
+    hasSpecialItems,
+  };
+}
+
+/**
+ * Tra cứu đơn giá gốc từ MongoDB MenuItem để tính tổng tiền món đặt trước phía Server.
+ * Tuyệt đối không tin giá tiền do Client gửi lên.
+ */
+export async function computeVerifiedPreOrderTotal(
+  preOrderItems?: ReadonlyArray<PreOrderItemInput>
+): Promise<number> {
+  const { verifiedTotal } = await inspectVerifiedPreOrder(preOrderItems);
+  return verifiedTotal;
 }

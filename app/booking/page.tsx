@@ -181,7 +181,7 @@ function BookingStepOneForm({
       return;
     }
     if (isSlotDisabledForDate(formData.date, formData.time)) {
-      setErrorMsg('Vui lòng đặt bàn trước giờ hẹn tối thiểu 30 phút (BR-RES-13).');
+      setErrorMsg('Vui lòng đặt bàn trước giờ hẹn tối thiểu 30 phút.');
       return;
     }
     if (!Number.isInteger(normalizedGuests) || normalizedGuests < 1) {

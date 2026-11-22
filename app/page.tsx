@@ -8,6 +8,7 @@ import { INITIAL_MENU_ITEMS, MenuItemData } from '@/app/lib/menuInitialData';
 import { useCart } from '@/app/context/CartContext';
 import { useToast } from '@/components/ui/Toast';
 import { formatMoney } from '@/app/lib/format';
+import { isSlotEligibleForSpecialPreOrder } from '@/app/lib/reservationHelpers';
 import { useAuthSession } from '@/app/lib/useAuthSession';
 
 const FEATURED_DISH_IDS = [
@@ -65,7 +66,14 @@ export default function Home() {
   const { isAdmin } = useAuthSession();
   const [featuredDishes, setFeaturedDishes] = useState<MenuItemData[]>(getInitialFeaturedDishes);
 
-  // Đồng bộ trạng thái còn món / hết món mới nhất từ MongoDB nếu có
+  const canOrderSpecialDishes = Boolean(
+    hasActiveBooking &&
+      bookingInfo?.date &&
+      bookingInfo?.time &&
+      isSlotEligibleForSpecialPreOrder(bookingInfo.date, bookingInfo.time)
+  );
+
+  // Đồng bộ trạng thái còn món / hết món mới nhất nếu có
   useEffect(() => {
     let isCancelled = false;
 
@@ -105,13 +113,15 @@ export default function Home() {
       return;
     }
 
-    if (dish.isPreOrderOnly && !hasActiveBooking) {
+    if (dish.isPreOrderOnly && !canOrderSpecialDishes) {
       if (isAdmin) {
         showToast('Tài khoản Quản trị viên (Admin) không sử dụng chức năng đặt bàn.', 'info');
         return;
       }
       showToast(
-        'Món đặc biệt chỉ phục vụ khi đặt bàn trước. Vui lòng chọn bàn trước khi thêm vào thực đơn!',
+        hasActiveBooking
+          ? 'Món đặc quyền chỉ áp dụng khi đặt bàn trước giờ ăn tối thiểu 5 tiếng. Vui lòng chọn lại khung giờ!'
+          : 'Món đặc biệt chỉ phục vụ khi đặt bàn trước tối thiểu 5 tiếng. Vui lòng chọn bàn trước khi thêm vào thực đơn!',
         'info'
       );
       router.push('/booking');
@@ -231,7 +241,7 @@ export default function Home() {
                 dot: 'bg-[#fbbf24]',
               };
               const isSoldOut = dish.isAvailable === false;
-              const needsBookingFirst = Boolean(dish.isPreOrderOnly && (!isLoaded || !hasActiveBooking));
+              const needsBookingFirst = Boolean(dish.isPreOrderOnly && (!isLoaded || !canOrderSpecialDishes));
 
               return (
                 <div

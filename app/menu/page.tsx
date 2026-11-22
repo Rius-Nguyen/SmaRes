@@ -2,17 +2,19 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { useCart } from '@/app/context/CartContext';
+import { useCart, type CartItem } from '@/app/context/CartContext';
 import { formatMoney } from '@/app/lib/format';
 import { INITIAL_MENU_ITEMS, MenuItemData } from '@/app/lib/menuInitialData';
+import { isSlotEligibleForSpecialPreOrder } from '@/app/lib/reservationHelpers';
 import DishCard from '@/components/menu/DishCard';
 import { DishSkeletonCard } from '@/components/ui/SkeletonCard';
+import DishDetailModal from '@/components/menu/DishDetailModal';
 import SpecialDishModal from '@/components/menu/SpecialDishModal';
 import { useToast } from '@/components/ui/Toast';
 import { useAuthSession } from '@/app/lib/useAuthSession';
 
 export default function MenuPage() {
-  const { cart, addToCart, totalItems, totalPrice, hasActiveBooking, bookingInfo } = useCart();
+  const { cart, addToCart, updateQuantity, totalItems, totalPrice, hasActiveBooking, bookingInfo } = useCart();
   const { showToast } = useToast();
   const { isAdmin } = useAuthSession();
 
@@ -21,7 +23,17 @@ export default function MenuPage() {
   const [menuList, setMenuList] = useState<MenuItemData[]>(INITIAL_MENU_ITEMS);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [specialDishModal, setSpecialDishModal] = useState<MenuItemData | null>(null);
+  const [detailDish, setDetailDish] = useState<MenuItemData | null>(null);
   const [cartPopKey, setCartPopKey] = useState<number>(0);
+
+  const bookingDate = bookingInfo?.date ?? '';
+  const bookingTime = bookingInfo?.time ?? '';
+  const canOrderSpecialDishes = Boolean(
+    hasActiveBooking &&
+      bookingDate &&
+      bookingTime &&
+      isSlotEligibleForSpecialPreOrder(bookingDate, bookingTime)
+  );
 
   const prevTotalItemsRef = useRef<number>(totalItems);
 
@@ -63,7 +75,7 @@ export default function MenuPage() {
       return;
     }
 
-    if (dish.isPreOrderOnly && !hasActiveBooking) {
+    if (dish.isPreOrderOnly && !canOrderSpecialDishes) {
       setSpecialDishModal(dish);
       return;
     }
@@ -78,6 +90,14 @@ export default function MenuPage() {
     });
     setCartPopKey((k) => k + 1);
     showToast(`Đã thêm "${dish.name}" vào giỏ hàng!`, 'success');
+  };
+
+  const handleDecrementFromCart = (dish: MenuItemData) => {
+    const matching = cart.filter((i) => i._id === dish._id);
+    if (matching.length === 0) return;
+    const target: CartItem =
+      matching.find((i) => !i.customizations) || matching[matching.length - 1];
+    updateQuantity(target.cartKey || target._id, target.quantity - 1);
   };
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -128,7 +148,10 @@ export default function MenuPage() {
               </span>
               <span className="leading-relaxed">
                 Bạn đang có đơn giữ chỗ: <strong className="font-semibold">Bàn {bookingInfo?.tableNumber}</strong> ({bookingInfo?.time},{' '}
-                {bookingInfo?.date}) • Tất cả món đặc quyền đã được mở khóa!
+                {bookingInfo?.date}) •{' '}
+                {canOrderSpecialDishes
+                  ? 'Tất cả món đặc quyền đã được mở khóa!'
+                  : 'Món đặc quyền chỉ mở khi đặt bàn trước từ 5 tiếng trở lên.'}
               </span>
             </div>
             <Link
@@ -153,7 +176,7 @@ export default function MenuPage() {
                 </svg>
               </span>
               <span className="leading-relaxed">
-                Các món đặc quyền (Phở Wagyu A5, Vịt quay mật ong rừng,...) chỉ phục vụ cho khách đặt bàn trước.
+                Các món đặc quyền (Phở Wagyu A5, Vịt quay mật ong rừng,...) chỉ phục vụ khi đặt bàn trước tối thiểu 5 tiếng.
               </span>
             </div>
             <Link
@@ -282,8 +305,11 @@ export default function MenuPage() {
                   key={dish._id}
                   dish={dish}
                   onAddToCart={handleAddToCart}
+                  onIncrement={handleAddToCart}
+                  onDecrement={handleDecrementFromCart}
+                  onViewDetail={setDetailDish}
                   cartQuantity={cartQuantity}
-                  hasActiveBooking={hasActiveBooking}
+                  hasActiveBooking={canOrderSpecialDishes}
                   actionLabel="Thêm vào giỏ hàng"
                   isSoldOut={dish.isAvailable === false}
                 />
@@ -325,10 +351,33 @@ export default function MenuPage() {
         </div>
       )}
 
+      <DishDetailModal
+        dish={detailDish}
+        onClose={() => setDetailDish(null)}
+        cartQuantity={
+          detailDish
+            ? cart
+                .filter((i) => i._id === detailDish._id)
+                .reduce((sum, i) => sum + i.quantity, 0)
+            : 0
+        }
+        hasActiveBooking={canOrderSpecialDishes}
+        specialLockedReason={
+          hasActiveBooking && !canOrderSpecialDishes
+            ? 'Lịch đặt bàn hiện tại cách giờ dùng bữa dưới 5 tiếng nên chưa áp dụng Món Đặc Quyền.'
+            : undefined
+        }
+        actionLabel="Thêm vào giỏ hàng"
+        onAddToCart={handleAddToCart}
+        onIncrement={handleAddToCart}
+        onDecrement={handleDecrementFromCart}
+      />
+
       {/* Modal món đặc quyền đặt trước dùng chung */}
       <SpecialDishModal
         dish={specialDishModal}
         onClose={() => setSpecialDishModal(null)}
+        lockReason={hasActiveBooking && !canOrderSpecialDishes ? 'SHORT_LEAD_TIME' : 'NO_BOOKING'}
       />
     </main>
   );

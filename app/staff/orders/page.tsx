@@ -790,7 +790,7 @@ export default function StaffOrdersPage() {
             Quản Lý Đơn Hàng &amp; Hỗ Trợ Bàn (Staff)
           </h1>
           <p className="text-xs sm:text-sm text-[#57534e] mt-1">
-            Đồng bộ trực tiếp với MongoDB: xử lý đơn bàn, điều phối Bếp và tiếp nhận yêu cầu gọi phục vụ
+            Đồng bộ trực tiếp với hệ thống: xử lý đơn bàn, điều phối Bếp và tiếp nhận yêu cầu gọi phục vụ
           </p>
         </div>
 
@@ -999,7 +999,7 @@ export default function StaffOrdersPage() {
         <div className="flex justify-center items-center py-20 bg-white rounded-2xl border border-[#ebe7df]">
           <div className="animate-spin rounded-full h-10 w-10 border-3 border-[#14532d]/20 border-t-[#14532d]" />
           <span className="ml-3 text-[#57534e] font-medium text-sm">
-            Đang tải dữ liệu điều phối từ MongoDB...
+            Đang tải dữ liệu điều phối từ hệ thống...
           </span>
         </div>
       ) : activeTab === 'orders' ? (

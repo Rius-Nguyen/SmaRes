@@ -536,7 +536,6 @@ function StaffTableQrContent() {
           {filteredTables.map((table) => {
             const activity = getTableQrActivityMeta(table.status);
             const tableMenuHref = `/table-menu?table=${encodeURIComponent(table.tableNumber)}`;
-            const printableUrl = buildPrintableTableQrUrl(table.tableNumber, effectiveBaseUrl);
             const qrDataUrl = qrDataUrlByTableId[table._id] ?? '';
             const hideInPrint = printingTableId !== null && printingTableId !== table._id;
 
@@ -654,9 +653,6 @@ function StaffTableQrContent() {
                         <p className="text-[11px] mt-0.5">{activity.hint}</p>
                       </>
                     )}
-                    <p className="mt-1.5 font-mono text-[10px] text-[#78716c] truncate" title={printableUrl}>
-                      {printableUrl}
-                    </p>
                   </div>
                 </div>
 
