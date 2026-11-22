@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useToast } from '@/components/ui/Toast';
+import { useAuthSession } from '@/app/lib/useAuthSession';
 import {
   KDSOrder,
   KdsOrderStatus,
@@ -47,6 +48,7 @@ function formatTableHeading(tableNumber?: string, tableId?: string): string {
 
 export default function KDSPage() {
   const { showToast } = useToast();
+  const { isAdmin } = useAuthSession();
   const [orders, setOrders] = useState<KDSOrder[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
@@ -543,22 +545,24 @@ export default function KDSPage() {
             <span className="hidden sm:inline">Đơn Staff</span>
           </Link>
 
-          <Link
-            href="/admin/menu"
-            className="min-h-[44px] px-4 py-2 rounded-xl bg-[#14532d] hover:bg-[#15803d] text-white text-xs font-semibold border border-emerald-700 transition-colors flex items-center gap-1.5"
-          >
-            <span>Kho món</span>
-            <svg
-              className="w-3.5 h-3.5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
+          {isAdmin && (
+            <Link
+              href="/admin/menu"
+              className="min-h-[44px] px-4 py-2 rounded-xl bg-[#14532d] hover:bg-[#15803d] text-white text-xs font-semibold border border-emerald-700 transition-colors flex items-center gap-1.5"
             >
-              <path d="M5 12h14" />
-              <path d="m12 5 7 7-7 7" />
-            </svg>
-          </Link>
+              <span>Quản lý thực đơn</span>
+              <svg
+                className="w-3.5 h-3.5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M5 12h14" />
+                <path d="m12 5 7 7-7 7" />
+              </svg>
+            </Link>
+          )}
         </div>
       </header>
 
