@@ -143,7 +143,7 @@ export default function Navbar() {
                 href="/login"
                 className="interactive-btn text-xs sm:text-sm font-semibold text-[#57534e] hover:text-[#1c1917] px-4 py-2 border border-[#d6d0c4] rounded-full hover:bg-white whitespace-nowrap"
               >
-                Đăng nhập
+                Đăng nhập/Đăng ký
               </Link>
             )}
 
