@@ -525,7 +525,7 @@ export default function AuthCard({ initialMode = 'login' }: AuthCardProps) {
                       value={registerData.password}
                       onChange={handleRegisterChange}
                       required
-                      placeholder="Tối thiểu 6 ký tự" 
+                      placeholder="Nhập mật khẩu" 
                       className="w-full pl-11 pr-12 py-2.5 bg-stone-50/60 border border-stone-200 rounded-xl text-stone-900 text-sm placeholder:text-stone-400 focus:outline-none focus:border-emerald-700 focus:ring-4 focus:ring-emerald-700/10 focus:bg-white hover:border-stone-300 transition-all duration-200" 
                     />
                     <button
